@@ -1004,3 +1004,68 @@ body.reading .toast.show { transform: translate(-50%, 0); }
 .menu-item .switch i { width: 22px; height: 22px; }
 .menu-item .switch.on i { transform: translateX(18px); }
 .toast.has-act:not(.show) { pointer-events: none; }
+
+/* ================= Lịch trực theo tuần ================= */
+.empty-acts { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 14px; }
+.empty-acts .btn { margin-top: 0; }
+.pi.duty { background: linear-gradient(145deg, #6fb7e6, #3a86b8); box-shadow: 0 8px 16px -8px rgba(58,134,184,.7); }
+.pi.duty svg { fill: none; }
+.dw-title { text-align: center; line-height: 1.2; }
+.dw-title small { display: block; font-size: 11.5px; color: var(--primary); font-weight: 700; }
+.dw-sum { display: grid; grid-template-columns: repeat(3, 1fr); border-radius: 20px; padding: 14px 6px; margin-bottom: 12px; text-align: center; }
+.dw-sum div + div { border-left: 1px solid var(--line); }
+.dw-sum b { display: block; font-size: 22px; font-weight: 800; }
+.dw-sum span { font-size: 12px; color: var(--muted); }
+.dw-warn { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 14px; margin-bottom: 12px; background: rgba(214,48,58,.1); color: #d6303a; font-size: 13.5px; font-weight: 600; }
+.dw-warn svg { width: 18px; height: 18px; flex-shrink: 0; }
+.dw-days { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.dw-day { display: grid; grid-template-columns: 48px 1fr auto; gap: 10px; align-items: center; border-radius: 18px; padding: 10px 10px 10px 12px; }
+.dw-day.today { border-color: var(--primary); }
+.dw-h { display: flex; flex-direction: column; align-items: center; line-height: 1.15; }
+.dw-h b { font-size: 15px; }
+.dw-h span { font-size: 11.5px; color: var(--muted); }
+.dw-day.today .dw-h b { color: var(--primary); }
+.dw-list { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.dw-e { display: flex; align-items: flex-start; gap: 8px; text-align: left; padding: 8px 10px; border-radius: 12px; background: color-mix(in srgb, var(--c) 11%, transparent); }
+.dw-e > i { width: 4px; align-self: stretch; border-radius: 4px; background: var(--c); flex-shrink: 0; }
+.dw-e b { display: block; font-size: 13.5px; }
+.dw-e small { font-size: 12px; color: var(--text-2); }
+.dw-e em { display: inline-block; margin-top: 4px; font-style: normal; font-size: 11px; font-weight: 700; color: #d6303a; background: rgba(214,48,58,.1); padding: 2px 8px; border-radius: 99px; }
+.dw-e em.ok { color: var(--primary); background: var(--primary-soft); }
+.dw-none { font-size: 13px; color: var(--muted); padding: 4px 2px; }
+.dw-add { width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; color: var(--primary); background: var(--primary-soft); }
+.dw-add svg { width: 18px; height: 18px; }
+.dw-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.dw-actions .btn { height: 46px; font-size: 13.5px; padding: 0 10px; }
+.dw-actions .btn svg { width: 17px; height: 17px; }
+.pos-sub { display: block; font-size: 12px; color: var(--muted); font-weight: 500; margin-top: 2px; line-height: 1.4; }
+.menu-item.ct { cursor: default; }
+.ct-call { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--primary); color: #fff; }
+.ct-call svg { width: 18px; height: 18px; }
+.ct-del { width: 32px; height: 32px; display: grid; place-items: center; color: var(--muted); }
+.ct-del svg { width: 16px; height: 16px; }
+.dw-time { width: 128px; height: 40px; padding: 0 8px; font-size: 15px; flex-shrink: 0; }
+.shift-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.shift-pick button { display: flex; flex-direction: column; gap: 2px; padding: 10px 8px; border-radius: 14px; background: var(--glass-strong); border: 1.5px solid var(--line); text-align: center; }
+.shift-pick b { font-size: 14px; }
+.shift-pick span { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.shift-pick button.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.shift-pick button.on span { color: rgba(255,255,255,.85); }
+.ps-list { display: flex; flex-direction: column; gap: 8px; }
+.ps-row { display: grid; grid-template-columns: 1fr 94px 94px 32px; gap: 6px; align-items: center; }
+.ps-row .input { height: 44px; padding: 0 10px; font-size: 14.5px; min-width: 0; }
+.ps-row button { width: 32px; height: 32px; display: grid; place-items: center; color: var(--muted); }
+.ps-row button svg { width: 16px; height: 16px; }
+.pprev { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.pp { padding: 10px 12px; border-radius: 14px; background: var(--primary-soft); }
+.pp b { display: block; font-size: 14px; color: var(--primary); }
+.pp span { font-size: 12.5px; color: var(--text-2); line-height: 1.5; }
+.duty-now { border-radius: 22px; padding: 14px 16px; margin: -10px 0 22px; border-color: color-mix(in srgb, var(--c) 40%, transparent); }
+.dn-h { display: flex; align-items: center; gap: 8px; }
+.dn-h b { font-size: 15px; flex: 1; }
+.dn-h > span:last-child { font-size: 12.5px; color: var(--muted); font-weight: 700; }
+.dn-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 0 var(--c); animation: pulse 1.8s infinite; }
+@keyframes pulse { 70% { box-shadow: 0 0 0 8px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+.dn-sub { font-size: 12.5px; color: var(--muted); margin: 2px 0 6px 18px; }
+.dn-list { display: flex; flex-direction: column; margin-left: 10px; }
+@media (max-width: 370px) { .ps-row { grid-template-columns: 1fr 82px 82px 28px; } }

@@ -127,6 +127,13 @@
     S.budget = S.budget || 0;
     S.shift = S.shift || { on: false, cycle: ['d', 'n', 'o', 'o'], start: keyOf() };
     S.shiftOv = S.shiftOv || {};
+    if (!S.shift.mode) S.shift.mode = S.shift.on ? 'cycle' : 'week';
+    S.duty = S.duty || {};
+    S.duty.positions = Array.isArray(S.duty.positions) ? S.duty.positions : [];
+    S.duty.entries = Array.isArray(S.duty.entries) ? S.duty.entries : [];
+    S.duty.contacts = Array.isArray(S.duty.contacts) ? S.duty.contacts : [];
+    if (S.duty.remind === undefined) S.duty.remind = true;
+    S.duty.dayStart = S.duty.dayStart || '00:00';
   }
   normalize();
   const save = () => { try { localStorage.setItem(STORE, JSON.stringify(S)); } catch { toast('Không lưu được dữ liệu'); } };
@@ -642,13 +649,107 @@
   // ----- Lịch trực -----
   function shiftOn(k) {
     const sh = S.shift;
-    if (!sh || !sh.on || !sh.cycle.length) return null;
+    if (!sh || !sh.on || sh.mode === 'week' || !sh.cycle.length) return null;
     const ov = S.shiftOv[k];
     if (ov && SHIFT_TYPES[ov]) return { id: ov, ...SHIFT_TYPES[ov], ov: true };
     const diff = daysBetween(sh.start, k), n = sh.cycle.length;
     const id = sh.cycle[((diff % n) + n) % n];
     return { id, ...SHIFT_TYPES[id] };
   }
+
+  // ----- Lịch trực theo tuần (lịch công bố hằng tuần) -----
+  const DUTY_COLORS = ['#3a86b8', '#4f5fd0', '#e5a50a', '#d6303a', '#18a957', '#8b5cf6', '#ec7a3c'];
+  const toMin = (t) => { const [h, m] = String(t || '0:0').split(':').map(Number); return (h || 0) * 60 + (m || 0); };
+  const shiftDur = (sf) => { let d = toMin(sf.end) - toMin(sf.start); if (d <= 0) d += 1440; return d; };
+  const fmtHours = (min) => `${Math.floor(min / 60)}${min % 60 ? `h${pad(min % 60)}` : ''}`;
+  const fmtLeft = (ms) => { const m = Math.max(1, Math.round(ms / 6e4)); return m >= 60 ? `${Math.floor(m / 60)} giờ${m % 60 ? ` ${m % 60} phút` : ''}` : `${m} phút`; };
+  const posOf = (id) => S.duty.positions.find((p) => p.id === id);
+  function entryInfo(e) {
+    const p = posOf(e.pos), sf = p && p.shifts.find((x) => x.id === e.shift);
+    if (!p || !sf) return null;
+    const nextDay = toMin(sf.start) < toMin(S.duty.dayStart);
+    const start = dateOf(e.date).getTime() + (toMin(sf.start) + (nextDay ? 1440 : 0)) * 6e4;
+    return { e, p, s: sf, id: e.id, color: p.color, label: `${p.name} · ${sf.name}`, short: sf.name.replace(/^Ca\s*/i, 'C').slice(0, 4), time: `${sf.start}–${sf.end}`, nextDay, start, end: start + shiftDur(sf) * 6e4, off: false };
+  }
+  const entriesOn = (k) => S.duty.entries.filter((e) => e.date === k).map(entryInfo).filter(Boolean).sort((a, b) => a.start - b.start);
+  const isNight = (x) => { const a = toMin(x.s.start) + (x.nextDay ? 1440 : 0), b = a + shiftDur(x.s); return (a < 300 && b > 0) || (a < 1740 && b > 1440); };
+  function dutyOf(k) {
+    if (!S.shift.on) return [];
+    if (S.shift.mode === 'cycle') { const c = shiftOn(k); return c ? [{ label: c.name, short: c.short, color: c.color, time: c.time, off: c.id === 'o', cyc: true, ov: c.ov }] : []; }
+    return entriesOn(k);
+  }
+  const nearDuty = () => { const t = keyOf(); return [addDays(t, -1), t, addDays(t, 1)].flatMap(entriesOn).filter((x) => x.end > Date.now()).sort((a, b) => a.start - b.start); };
+  function dutyReminder() {
+    if (!S.shift.on || S.shift.mode !== 'week' || !S.duty.remind || !S.duty.positions.length) return null;
+    const today = keyOf(), dow = dateOf(today).getDay(), mon = mondayOf(today);
+    const hasWeek = (m) => S.duty.entries.some((e) => e.date >= m && e.date <= addDays(m, 6));
+    if (dow === 0 && !hasWeek(addDays(mon, 7))) return { mon: addDays(mon, 7), title: 'Lịch trực tuần tới đã công bố?', sub: `Nhập ca của bạn cho tuần ${fmtDM(addDays(mon, 7))} – ${fmtDM(addDays(mon, 13))}` };
+    if (dow >= 1 && dow <= 2 && !hasWeek(mon)) return { mon, title: 'Chưa có lịch trực tuần này', sub: `Nhập ca của bạn cho tuần ${fmtDM(mon)} – ${fmtDM(addDays(mon, 6))}` };
+    return null;
+  }
+  function dutyNotes() {
+    const out = [];
+    if (!S.shift.on) return out;
+    if (S.shift.mode === 'cycle') {
+      if (new Date().getHours() >= 17) { const t = shiftOn(addDays(keyOf(), 1)); if (t && t.id !== 'o') out.push({ badge: t.short, color: t.color, title: `Ngày mai: ${t.name}`, sub: t.time || '' }); }
+      return out;
+    }
+    const now = Date.now(), near = nearDuty();
+    const cur = near.find((x) => x.start <= now);
+    if (cur) out.push({ quiet: true, badge: cur.short, color: cur.color, title: `Đang trực: ${cur.label}`, sub: `${cur.time} · còn ${fmtLeft(cur.end - now)}` });
+    const nx = near.find((x) => x.start > now && x.start - now <= 12 * 3600e3);
+    if (nx) out.push({ badge: nx.short, color: nx.color, title: `Sắp vào ca: ${nx.label}`, sub: `Lúc ${nx.s.start}${keyOf(new Date(nx.start)) === keyOf() ? ' hôm nay' : ' ngày mai'} · còn ${fmtLeft(nx.start - now)}` });
+    S.duty.entries.filter((e) => e.swap && !e.reported && e.date >= addDays(keyOf(), -1)).map(entryInfo).filter(Boolean)
+      .forEach((x) => out.push({ badge: '!', color: '#d6303a', title: 'Đổi ca chưa báo cáo Ban Giám đốc', sub: `${x.label} · ${dayLabel(x.e.date)}`, entry: x.e.id }));
+    const r = dutyReminder();
+    if (r) out.push({ badge: '📅', color: '#3a86b8', title: r.title, sub: r.sub, week: r.mon });
+    return out;
+  }
+  function heroDutyChip() {
+    if (!S.shift.on) return '';
+    const chip = (c, txt) => `<button class="shift-chip" data-act="go" data-to="shift" style="--c:${c}"><i></i>${txt}</button>`;
+    if (S.shift.mode === 'cycle') { const sf = shiftOn(keyOf()); return sf ? chip(sf.color, `${sf.name}${sf.time ? ` · ${sf.time}` : ''}`) : ''; }
+    const now = Date.now(), near = nearDuty();
+    const cur = near.find((x) => x.start <= now);
+    const nx = near.find((x) => x.start > now && x.start - now < 18 * 3600e3);
+    const x = cur || nx;
+    if (!x) return '';
+    return chip(x.color, cur ? `Đang trực · ${esc(x.label)} · đến ${x.s.end}` : `Ca tới · ${esc(x.label)} · ${x.s.start} ${keyOf(new Date(x.start)) === keyOf() ? 'hôm nay' : 'ngày mai'}`);
+  }
+  function dutyNowCard() {
+    if (!S.shift.on || S.shift.mode !== 'week') return '';
+    const now = Date.now(), cur = nearDuty().find((x) => x.start <= now);
+    if (!cur || !(cur.p.checklist || []).length) return '';
+    const done = cur.e.checks || [];
+    return `<div class="duty-now glass" style="--c:${cur.color}">
+      <div class="dn-h"><span class="dn-dot"></span><b>Đang trực · ${esc(cur.label)}</b><span>${done.length}/${cur.p.checklist.length}</span></div>
+      <div class="dn-sub">${cur.time} · còn ${fmtLeft(cur.end - now)}</div>
+      <div class="dn-list">${cur.p.checklist.map((t, i) => `<button class="sub ${done.includes(i) ? 'on' : ''}" data-act="duty-check" data-id="${cur.e.id}" data-i="${i}"><span class="sub-c">${ic('check', 'stroke-width="3.2"')}</span>${esc(t)}</button>`).join('')}</div>
+    </div>`;
+  }
+  // Đọc đoạn "Thời gian ca trực": dòng tên vị trí, sau đó các ca "Ca 1: Từ 7h30 đến 13h; Ca 2: ..."
+  function parseShiftText(txt) {
+    const out = [];
+    let cur = null;
+    const re = /Ca\s*(\d+)\s*[:：.]?\s*(?:từ\s*)?(\d{1,2})\s*(?:h|giờ|:)\s*(\d{1,2})?\s*(?:đến|tới|-|–)\s*(\d{1,2})\s*(?:h|giờ|:)\s*(\d{1,2})?/gi;
+    String(txt).split(/\r?\n/).forEach((line) => {
+      const l = line.trim();
+      if (!l) return;
+      const ms = [...l.matchAll(re)];
+      if (!ms.length) {
+        const name = l.replace(/^[-–•+*\s]+/, '').replace(/[:：]\s*$/, '').trim();
+        if (name && name.length <= 60 && !/^\d+\s*[.)]/.test(name)) { cur = { name, shifts: [] }; out.push(cur); }
+        return;
+      }
+      if (!cur) { cur = { name: 'Vị trí trực', shifts: [] }; out.push(cur); }
+      ms.forEach((m) => {
+        const hh = (h, mm) => `${pad(Math.min(23, +h))}:${pad(Math.min(59, +(mm || 0)))}`;
+        cur.shifts.push({ name: `Ca ${m[1]}`, start: hh(m[2], m[3]), end: hh(m[4], m[5]) });
+      });
+    });
+    return out.filter((p) => p.shifts.length);
+  }
+  const defaultDutyWeek = () => { const t = keyOf(); return dateOf(t).getDay() === 0 ? addDays(mondayOf(t), 7) : mondayOf(t); };
 
   // ---------- Views ----------
   function viewHome() {
@@ -658,7 +759,7 @@
     const done = list.filter((t) => t.done).length;
     const pct = total ? Math.round((done / total) * 100) : 0;
     const f = fmtDur(focusOn(today) + runningElapsed());
-    const hasNotif = upcoming().length > 0 || overdueList().length > 0 || readLeftMin() > 0 || upcomingEvents(3).length > 0;
+    const hasNotif = upcoming().length > 0 || overdueList().length > 0 || readLeftMin() > 0 || upcomingEvents(3).length > 0 || dutyNotes().some((x) => !x.quiet);
 
     let title = 'Bắt đầu thôi!', sub = 'Thêm việc đầu tiên cho hôm nay nhé.';
     if (total) {
@@ -686,7 +787,7 @@
           <p class="hello-sub">${greeting()}</p>
           <h1 class="hello">Xin chào, ${esc(S.name || 'bạn')} <span class="wave">👋</span></h1>
           <p class="tagline">${esc(S.tagline || '')}</p>
-          ${shiftOn(today) ? (() => { const sf = shiftOn(today); return `<button class="shift-chip" data-act="go" data-to="shift" style="--c:${sf.color}"><i></i>${sf.name}${sf.time ? ` · ${sf.time}` : ''}</button>`; })() : ''}
+          ${heroDutyChip()}
         </div>
         <button data-act="go-profile" aria-label="Trang cá nhân">${avatarHTML()}</button>
       </section>
@@ -752,6 +853,9 @@
         return `<div class="soon">${hol.map((h) => `<button class="soon-i glass" data-act="go" data-to="lunar"><span class="soon-e">🎌</span><span><b>${h}</b><span>Hôm nay · ${lunarFull(today)}</span></span></button>`).join('')}
           ${evs.map(({ e, next }) => { const n = daysBetween(today, next), y = evYears(e, next); return `<button class="soon-i glass ${n === 0 ? 'hot' : ''}" data-act="event-edit" data-eid="${e.id}"><span class="soon-e">${EV_TYPES[e.type][1]}</span><span><b>${esc(e.title)}</b><span>${n === 0 ? 'Hôm nay' : n === 1 ? 'Ngày mai' : `Còn ${n} ngày`} · ${fmtDM(next)}${y > 0 && e.type === 'birthday' ? ` · tròn ${y} tuổi` : ''}</span></span></button>`; }).join('')}</div>`;
       })()}
+
+      ${(() => { const r = dutyReminder(); return r ? `<button class="prompt glass" data-act="duty-week" data-mon="${r.mon}"><span class="pi duty">${ic('calendar')}</span><span class="pt"><b>${r.title}</b><span>${r.sub}</span></span>${ic('chevR')}</button>` : ''; })()}
+      ${dutyNowCard()}
 
       ${habitStripHTML()}
 
@@ -841,19 +945,19 @@
       <div class="week glass">
         ${days.map((k) => {
           const d = dateOf(k);
-          const n = Math.min(tasksOn(k).length, 3), sf = shiftOn(k), special = holidaysOn(k).length || eventsOn(k).length;
+          const n = Math.min(tasksOn(k).length, 3), ds = dutyOf(k), sf = ds.length ? { color: ds[0].color, short: ds.length > 1 ? `${ds.length} ca` : ds[0].short } : null, special = holidaysOn(k).length || eventsOn(k).length;
           return `<button class="day ${k === today ? 'today' : ''} ${k === ui.calSel ? 'sel' : ''}" data-act="pick-day" data-day="${k}" aria-label="${dayLabel(k)}">
             ${WD[d.getDay()]}<b>${d.getDate()}</b><small class="lu ${lunarOf(k).day === 1 || lunarOf(k).day === 15 ? 'key' : ''}">${lunarShort(k)}</small>
             ${sf ? `<span class="shb" style="--c:${sf.color}">${sf.short}</span>` : ''}<span class="dots">${special ? '<i class="evd"></i>' : ''}${'<i></i>'.repeat(n)}</span></button>`;
         }).join('')}
       </div>
       ${(() => {
-        const k = ui.calSel, sf = shiftOn(k);
+        const k = ui.calSel, ds = dutyOf(k);
         return `<div class="day-info">
           <button class="di lu" data-act="go" data-to="lunar">🌙 ${lunarFull(k)}</button>
           ${holidaysOn(k).map((h) => `<span class="di hol">🎌 ${h}</span>`).join('')}
           ${eventsOn(k).map((e) => `<button class="di ev" data-act="event-edit" data-eid="${e.id}">${EV_TYPES[e.type][1]} ${esc(e.title)}</button>`).join('')}
-          ${sf ? `<button class="di sh" data-act="shift-day" data-day="${k}" style="--c:${sf.color}"><i></i>${sf.name}${sf.time ? ` · ${sf.time}` : ''}${sf.ov ? ' (đã đổi)' : ''}</button>` : ''}
+          ${ds.map((x) => `<button class="di sh" ${x.cyc ? `data-act="shift-day" data-day="${k}"` : `data-act="duty-edit" data-id="${x.id}"`} style="--c:${x.color}"><i></i>${esc(x.label)}${x.time ? ` · ${x.time}` : ''}${x.nextDay ? ' (rạng sáng hôm sau)' : ''}${x.ov || (x.e && x.e.swap) ? ' (đổi ca)' : ''}</button>`).join('')}
         </div>`;
       })()}
       <div class="section-head">
@@ -960,13 +1064,13 @@
     const outToday = sumType(S.money.filter((x) => x.date === k), 'out');
     const outMonth = sumType(S.money.filter((x) => x.date.slice(0, 7) === mk), 'out');
     const upEv = upcomingEvents(366)[0];
-    const l = lunarOf(k), sf = shiftOn(k), j = S.journal[k] || {};
+    const l = lunarOf(k), ds = dutyOf(k).filter((x) => !x.off), j = S.journal[k] || {};
     const tiles = [
       ['habits', 'Thói quen', '🔥', '#ec7a3c', S.habits.length ? `${doneH}/${dueH.length} hôm nay` : 'Tạo thói quen đầu tiên'],
       ['money', 'Thu chi', '💰', '#18a957', S.money.length ? `Hôm nay ${fmtShort(outToday)} · Tháng ${fmtShort(outMonth)}` : 'Ghi chi tiêu nhanh'],
       ['events', 'Ngày quan trọng', '🎂', '#d6303a', upEv ? `${esc(upEv.e.title)} · ${cdText(daysBetween(k, upEv.next))}` : 'Sinh nhật, ngày giỗ…'],
       ['lunar', 'Lịch âm', '🌙', '#4f5fd0', `${l.day}/${l.month} năm ${LN.canChiYear(l.year)}`],
-      ['shift', 'Lịch trực', '🛡️', '#3a86b8', S.shift.on ? (sf ? `Hôm nay: ${sf.name}` : 'Chưa có chu kỳ') : 'Chưa bật'],
+      ['shift', 'Lịch trực', '🛡️', '#3a86b8', !S.shift.on ? 'Chưa bật' : ds.length ? `Hôm nay: ${ds.map((x) => x.short).join(', ')}` : S.shift.mode === 'week' ? 'Hôm nay không có ca' : 'Hôm nay nghỉ'],
       ['journal', 'Nhật ký', '📓', '#8b5cf6', j.mood ? `Hôm nay ${MOODS[j.mood - 1].e} ${MOODS[j.mood - 1].l}` : 'Ghi lại cảm xúc'],
       ['analytics', 'Thống kê', '📊', '#e5a50a', `${weekDone()} việc xong tuần này`],
       ['profile', 'Cá nhân', '⚙️', '#6b7a72', 'Hồ sơ, mục tiêu, sao lưu'],
@@ -1076,12 +1180,57 @@
   }
 
   function viewShift() {
-    const sh = S.shift, k = keyOf();
-    const next = Array.from({ length: 14 }, (_, i) => addDays(k, i));
-    return `${subHead('Lịch trực', 'Thiết lập chu kỳ ca một lần, lịch tự xoay.')}
+    const sh = S.shift;
+    return `${subHead('Lịch trực', sh.mode === 'week' ? 'Nhập ca theo lịch được công bố mỗi tuần.' : 'Thiết lập chu kỳ ca một lần, lịch tự xoay.')}
       <div class="sh-toggle glass"><div><b>Bật lịch trực</b><span>Hiện ca trên trang chủ và trong Lịch</span></div>
         <button class="switch ${sh.on ? 'on' : ''}" data-act="shift-toggle" role="switch" aria-checked="${sh.on}" aria-label="Bật lịch trực"><i></i></button></div>
-      ${sh.on ? `
+      ${sh.on ? `<div class="seg" style="margin:4px 0 6px"><button data-act="shift-mode" data-v="week" class="${sh.mode === 'week' ? 'on' : ''}">Lịch theo tuần</button><button data-act="shift-mode" data-v="cycle" class="${sh.mode === 'cycle' ? 'on' : ''}">Chu kỳ cố định</button></div>
+        ${sh.mode === 'week' ? dutyWeekHTML() : cycleHTML()}` : ''}`;
+  }
+
+  function dutyWeekHTML() {
+    const D = S.duty, today = keyOf();
+    if (!D.positions.length) {
+      return `<div class="empty glass" style="margin-top:12px"><div class="big">🛡️</div>Trước tiên, khai báo vị trí trực và giờ các ca.<br>Cách nhanh nhất: dán đoạn “Thời gian ca trực” trong văn bản lịch trực.
+        <div class="empty-acts"><button class="btn btn-primary" data-act="duty-paste">${ic('list')} Dán từ văn bản</button><button class="btn btn-ghost" data-act="duty-pos-new">${ic('plus')} Tự thêm</button></div></div>`;
+    }
+    const mon = ui.dutyWeek || defaultDutyWeek();
+    const days = Array.from({ length: 7 }, (_, i) => addDays(mon, i));
+    const ents = days.flatMap(entriesOn);
+    const mins = ents.reduce((a, x) => a + shiftDur(x.s), 0);
+    const unrep = ents.filter((x) => x.e.swap && !x.e.reported).length;
+    const tag = mon === mondayOf(today) ? 'Tuần này' : mon === addDays(mondayOf(today), 7) ? 'Tuần tới' : mon === addDays(mondayOf(today), -7) ? 'Tuần trước' : '';
+    return `
+      <div class="m-nav" style="margin-top:16px"><button class="icon-btn glass" data-act="duty-wk" data-n="-7" aria-label="Tuần trước">${ic('chevL')}</button>
+        <b class="dw-title">${tag ? `<small>${tag}</small>` : ''}${fmtDM(mon)} – ${fmtDM(addDays(mon, 6))}/${dateOf(addDays(mon, 6)).getFullYear()}</b>
+        <button class="icon-btn glass" data-act="duty-wk" data-n="7" aria-label="Tuần sau">${ic('chevR')}</button></div>
+      <div class="dw-sum glass"><div><b>${ents.length}</b><span>ca trực</span></div><div><b>${fmtHours(mins)}</b><span>giờ trực</span></div><div><b>${ents.filter(isNight).length}</b><span>ca đêm</span></div></div>
+      ${unrep ? `<div class="dw-warn">${ic('alert')} ${unrep} ca đổi chưa báo cáo Ban Giám đốc</div>` : ''}
+      <div class="dw-days">${days.map((d) => {
+        const es = entriesOn(d);
+        return `<div class="dw-day glass ${d === today ? 'today' : ''}">
+          <div class="dw-h"><b>${WD[dateOf(d).getDay()]}</b><span>${fmtDM(d)}</span></div>
+          <div class="dw-list">${es.map((x) => `<button class="dw-e" data-act="duty-edit" data-id="${x.e.id}" style="--c:${x.color}"><i></i><span><b>${esc(x.label)}</b><small>${x.time}${x.nextDay ? ' · rạng sáng hôm sau' : ''}${x.e.note ? ` · ${esc(x.e.note)}` : ''}</small>${x.e.swap ? `<em class="${x.e.reported ? 'ok' : ''}">${x.e.reported ? 'Đổi ca · đã báo cáo' : 'Đổi ca · chưa báo cáo'}</em>` : ''}</span></button>`).join('') || '<span class="dw-none">Không có ca</span>'}</div>
+          <button class="dw-add" data-act="duty-add" data-day="${d}" aria-label="Thêm ca ngày ${fmtDM(d)}">${ic('plus')}</button>
+        </div>`;
+      }).join('')}</div>
+      <div class="dw-actions"><button class="btn btn-ghost" data-act="duty-copy" data-mon="${mon}">${ic('repeat')} Chép tuần trước</button><button class="btn btn-ghost" data-act="duty-ics" data-mon="${mon}">${ic('calendar')} Đưa vào Lịch máy</button></div>
+      <div class="section-head"><h3>Vị trí & giờ ca</h3><button class="link" data-act="duty-paste">${ic('list')} Dán từ văn bản</button></div>
+      <div class="list glass" style="padding:4px">${D.positions.map((p) => `<button class="menu-item" data-act="duty-pos" data-id="${p.id}"><span class="mi" style="background:color-mix(in srgb, ${p.color} 16%, transparent);color:${p.color}">${p.shifts.length}</span><span class="grow">${esc(p.name)}<small class="pos-sub">${p.shifts.map((x) => `${esc(x.name)} ${x.start}–${x.end}`).join(' · ')}</small></span><span class="chev">${ic('chevR')}</span></button>`).join('')}
+        <button class="menu-item" data-act="duty-pos-new"><span class="mi">${ic('plus')}</span><span class="grow">Thêm vị trí trực</span></button></div>
+      <div class="section-head"><h3>Liên hệ khi có sự cố</h3><button class="link" data-act="duty-contact-new">${ic('plus')} Thêm</button></div>
+      ${D.contacts.length ? `<div class="list glass" style="padding:4px">${D.contacts.map((c, i) => `<div class="menu-item ct"><span class="mi">${ic('user')}</span><span class="grow">${esc(c.name)}<small class="pos-sub">${esc(c.phone)}${c.note ? ` · ${esc(c.note)}` : ''}</small></span><a class="ct-call" href="tel:${esc(c.phone.replace(/[^\d+]/g, ''))}" aria-label="Gọi ${esc(c.name)}">${ic('phone')}</a><button class="ct-del" data-act="duty-contact-del" data-i="${i}" aria-label="Xóa liên hệ">${ic('x')}</button></div>`).join('')}</div>`
+        : '<p class="page-sub" style="margin:0 4px">Lưu số cán bộ phụ trách để gọi nhanh khi có sự cố.</p>'}
+      <div class="list glass" style="padding:4px;margin-top:16px">
+        <button class="menu-item" data-act="duty-remind" role="switch" aria-checked="${!!D.remind}"><span class="mi">${ic('bell')}</span><span class="grow">Nhắc nhập lịch vào Chủ nhật</span><span class="switch ${D.remind ? 'on' : ''}"><i></i></span></button>
+        <label class="menu-item"><span class="mi">${ic('clock')}</span><span class="grow">Ngày trực bắt đầu lúc<small class="pos-sub">Ca bắt đầu trước giờ này được tính là rạng sáng hôm sau</small></span><input type="time" class="input dw-time" id="duty-daystart" value="${D.dayStart}"></label>
+      </div>`;
+  }
+
+  function cycleHTML() {
+    const sh = S.shift, k = keyOf();
+    const next = Array.from({ length: 14 }, (_, i) => addDays(k, i));
+    return `
       <div class="section-head"><h3>Mẫu có sẵn</h3></div>
       <div class="chips sm">${SHIFT_TPL.map(([n, c], i) => `<button class="chip ${c.join() === sh.cycle.join() ? 'on' : ''}" data-act="shift-tpl" data-i="${i}">${n}</button>`).join('')}</div>
       <div class="section-head"><h3>Chu kỳ ${sh.cycle.length} ngày</h3>${sh.cycle.length ? '<button class="link" data-act="shift-clear">Xóa hết</button>' : ''}</div>
@@ -1090,7 +1239,7 @@
       <label class="field" style="margin-top:16px"><span>Ngày 1 của chu kỳ là</span><input class="input" type="date" id="sh-start" value="${sh.start}"></label>
       <div class="section-head"><h3>14 ngày tới</h3><span class="page-sub" style="margin:0">Chạm để đổi ca</span></div>
       <div class="sh-grid">${next.map((d) => { const sf = shiftOn(d); return `<button class="sh-day ${sf && sf.ov ? 'ov' : ''} ${d === k ? 'today' : ''}" data-act="shift-day" data-day="${d}" style="--c:${sf ? sf.color : 'var(--muted)'}"><span>${WD[dateOf(d).getDay()]} ${dateOf(d).getDate()}</span><b>${sf ? sf.short : '–'}</b></button>`; }).join('')}</div>
-      <p class="footnote">Ô viền đứt là ngày đã đổi ca thủ công.</p>` : ''}`;
+      <p class="footnote">Ô viền đứt là ngày đã đổi ca thủ công.</p>`;
   }
 
   function viewProfile() {
@@ -1168,7 +1317,7 @@
   fab.addEventListener('contextmenu', (e) => e.preventDefault());
   fab.addEventListener('click', () => {
     if (fabLong) { fabLong = false; return; }
-    const ctx = { money: () => moneySheet(), habits: () => habitSheet(), events: () => eventSheet(), tools: () => quickAddSheet() }[ui.tab];
+    const ctx = { money: () => moneySheet(), habits: () => habitSheet(), events: () => eventSheet(), tools: () => quickAddSheet(), shift: S.shift.on && S.shift.mode === 'week' ? () => dutySheet() : null }[ui.tab];
     ctx ? ctx() : taskSheet();
   });
 
@@ -1670,6 +1819,187 @@
     });
   }
 
+  function dutySheet(entry, day) {
+    const D = S.duty;
+    if (!D.positions.length) { dutyPasteSheet(); return; }
+    const d = entry
+      ? { ...entry, shifts: [entry.shift] }
+      : { date: day || (ui.tab === 'calendar' ? ui.calSel : keyOf()), pos: (posOf(D.lastPos) || D.positions[0]).id, shifts: [], note: '', swap: false, swapWith: '', reported: false };
+    openSheet(`<h3>${entry ? 'Sửa ca trực' : 'Thêm ca trực'}</h3>
+      <form id="df" autocomplete="off">
+        <label class="field"><span>Ngày trực (theo lịch công bố)</span><input class="input" type="date" name="ddate" value="${d.date}" required></label>
+        <div class="field"><span>Vị trí</span><div class="chips sm" id="dp">${D.positions.map((p) => `<button type="button" class="chip ${p.id === d.pos ? 'on' : ''}" data-v="${p.id}"><span class="cat-dot" style="--c:${p.color}"></span>${esc(p.name)}</button>`).join('')}</div></div>
+        <div class="field"><span>Ca${entry ? '' : ' (chọn được nhiều ca)'}</span><div class="shift-pick" id="ds"></div></div>
+        <label class="field"><span>Ghi chú</span><input class="input" name="dnote" maxlength="80" value="${esc(d.note || '')}" placeholder="Ví dụ: trực cùng tổ khác"></label>
+        <label class="check-row"><input type="checkbox" name="dswap" ${d.swap ? 'checked' : ''}> Đây là ca đổi với người khác</label>
+        <div id="dsw" ${d.swap ? '' : 'hidden'}>
+          <label class="field"><span>Đổi ca với</span><input class="input" name="dwith" maxlength="60" value="${esc(d.swapWith || '')}" placeholder="Họ tên đồng chí đổi ca"></label>
+          <label class="check-row"><input type="checkbox" name="drep" ${d.reported ? 'checked' : ''}> Đã báo cáo Ban Giám đốc</label>
+          <p class="footnote" style="text-align:left;margin:-8px 4px 14px">Đổi ca cần báo cáo để tránh vướng trách nhiệm khi có sự cố.</p>
+        </div>
+        <button class="btn btn-primary btn-block" type="submit">${entry ? 'Lưu thay đổi' : 'Thêm ca'}</button>
+        ${entry ? `<button type="button" class="btn btn-danger btn-block" id="ddel" style="margin-top:10px">${ic('trash')} Xóa ca này</button>` : ''}
+      </form>`, (sh) => {
+      const f = $('#df', sh);
+      const drawShifts = () => {
+        const p = posOf(d.pos);
+        $('#ds', sh).innerHTML = p ? p.shifts.map((x) => `<button type="button" class="${d.shifts.includes(x.id) ? 'on' : ''}" data-v="${x.id}"><b>${esc(x.name)}</b><span>${x.start}–${x.end}</span></button>`).join('') : '';
+      };
+      drawShifts();
+      $('#dp', sh).addEventListener('click', (e) => {
+        const b = e.target.closest('button'); if (!b) return;
+        d.pos = b.dataset.v; d.shifts = []; $$('#dp button', sh).forEach((x) => x.classList.toggle('on', x === b)); drawShifts();
+      });
+      $('#ds', sh).addEventListener('click', (e) => {
+        const b = e.target.closest('button'); if (!b) return;
+        const v = b.dataset.v;
+        d.shifts = entry ? [v] : d.shifts.includes(v) ? d.shifts.filter((x) => x !== v) : [...d.shifts, v];
+        drawShifts();
+      });
+      f.dswap.addEventListener('change', () => { $('#dsw', sh).hidden = !f.dswap.checked; });
+      if (entry) $('#ddel', sh).addEventListener('click', () => {
+        const idx = D.entries.indexOf(entry); D.entries.splice(idx, 1); save(); closeSheet(); render();
+        toast('Đã xóa ca trực', { fn: () => { D.entries.splice(idx, 0, entry); save(); render(); } });
+      });
+      f.addEventListener('submit', (e) => {
+        e.preventDefault();
+        if (!d.pos || !d.shifts.length) { toast('Chọn vị trí và ít nhất một ca'); return; }
+        const swap = f.dswap.checked;
+        const base = { date: f.ddate.value || keyOf(), pos: d.pos, note: f.dnote.value.trim(), swap, swapWith: swap ? f.dwith.value.trim() : '', reported: swap && f.drep.checked };
+        D.lastPos = d.pos;
+        let n = 0;
+        if (entry) { Object.assign(entry, base, { shift: d.shifts[0] }); n = 1; }
+        else d.shifts.forEach((sid) => {
+          if (!D.entries.some((x) => x.date === base.date && x.pos === base.pos && x.shift === sid)) { D.entries.push({ id: uid(), ...base, shift: sid, checks: [] }); n++; }
+        });
+        save(); closeSheet(); render();
+        toast(swap && !base.reported ? 'Đã lưu · nhớ báo cáo Ban Giám đốc việc đổi ca' : entry ? 'Đã lưu ca trực' : `Đã thêm ${n} ca · ${dayLabel(base.date)}`);
+      });
+    });
+  }
+
+  function dutyPosSheet(p) {
+    const D = S.duty;
+    const d = p ? JSON.parse(JSON.stringify(p)) : { name: '', color: DUTY_COLORS[D.positions.length % DUTY_COLORS.length], shifts: [{ id: uid(), name: 'Ca 1', start: '07:30', end: '11:30' }], checklist: [] };
+    d.checklist = d.checklist || [];
+    openSheet(`<h3>${p ? 'Sửa vị trí trực' : 'Vị trí trực mới'}</h3>
+      <form id="pf2" autocomplete="off">
+        <label class="field"><span>Tên vị trí</span><input class="input" name="pname" maxlength="60" required value="${esc(d.name)}" placeholder="Ví dụ: Trực phòng máy"></label>
+        <div class="field"><span>Màu</span><div class="color-row" id="pc">${DUTY_COLORS.map((c) => `<button type="button" data-v="${c}" style="--c:${c}" class="${c === d.color ? 'on' : ''}" aria-label="Chọn màu"></button>`).join('')}</div></div>
+        <div class="field"><span>Các ca (tên · bắt đầu · kết thúc)</span><div id="pss" class="ps-list"></div>
+          <button type="button" class="btn btn-ghost btn-block" id="padd" style="height:44px;margin-top:8px">${ic('plus')} Thêm ca</button></div>
+        <label class="field"><span>Việc cần làm trong ca (mỗi dòng một việc)</span><textarea class="input" name="pcheck" rows="4" placeholder="Ví dụ:&#10;Ghi sổ nhật ký ca trực&#10;Kiểm tra thiết bị đầu ca">${esc(d.checklist.join('\n'))}</textarea></label>
+        <button class="btn btn-primary btn-block" type="submit">${p ? 'Lưu thay đổi' : 'Lưu vị trí'}</button>
+        ${p ? `<button type="button" class="btn btn-danger btn-block" id="pdel" style="margin-top:10px">${ic('trash')} Xóa vị trí</button>` : ''}
+      </form>`, (sh) => {
+      const f = $('#pf2', sh);
+      const draw = () => {
+        $('#pss', sh).innerHTML = d.shifts.map((x, i) => `<div class="ps-row" data-i="${i}"><input class="input" data-k="name" value="${esc(x.name)}" maxlength="20" aria-label="Tên ca"><input class="input" type="time" data-k="start" value="${x.start}" aria-label="Bắt đầu"><input class="input" type="time" data-k="end" value="${x.end}" aria-label="Kết thúc"><button type="button" data-del="${i}" aria-label="Xóa ca">${ic('x')}</button></div>`).join('');
+      };
+      draw();
+      $('#pss', sh).addEventListener('input', (e) => { const row = e.target.closest('.ps-row'); if (row) d.shifts[+row.dataset.i][e.target.dataset.k] = e.target.value; });
+      $('#pss', sh).addEventListener('click', (e) => { const b = e.target.closest('[data-del]'); if (b) { d.shifts.splice(+b.dataset.del, 1); draw(); } });
+      $('#padd', sh).addEventListener('click', () => {
+        const last = d.shifts[d.shifts.length - 1];
+        d.shifts.push({ id: uid(), name: `Ca ${d.shifts.length + 1}`, start: last ? last.end : '07:30', end: last ? last.end : '11:30' }); draw();
+      });
+      $('#pc', sh).addEventListener('click', (e) => {
+        const b = e.target.closest('button'); if (!b) return;
+        d.color = b.dataset.v; $$('#pc button', sh).forEach((x) => x.classList.toggle('on', x === b));
+      });
+      if (p) $('#pdel', sh).addEventListener('click', () => {
+        const used = D.entries.filter((e) => e.pos === p.id).length;
+        if (used && !confirm(`Vị trí này có ${used} ca đã nhập. Xóa cả các ca đó?`)) return;
+        const idx = D.positions.indexOf(p), removed = D.entries.filter((e) => e.pos === p.id);
+        D.positions.splice(idx, 1); D.entries = D.entries.filter((e) => e.pos !== p.id);
+        save(); closeSheet(); render();
+        toast('Đã xóa vị trí trực', { fn: () => { D.positions.splice(idx, 0, p); D.entries.push(...removed); save(); render(); } });
+      });
+      f.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const name = f.pname.value.trim(); if (!name) return;
+        const shifts = d.shifts.filter((x) => x.name.trim() && x.start && x.end).map((x) => ({ ...x, name: x.name.trim() }));
+        if (!shifts.length) { toast('Cần ít nhất một ca có giờ bắt đầu và kết thúc'); return; }
+        const data = { name, color: d.color, shifts, checklist: f.pcheck.value.split('\n').map((x) => x.trim()).filter(Boolean) };
+        if (p) Object.assign(p, data); else D.positions.push({ id: uid(), ...data });
+        save(); closeSheet(); render(); toast(p ? 'Đã lưu vị trí trực' : 'Đã thêm vị trí trực');
+      });
+    });
+  }
+
+  function dutyPasteSheet() {
+    openSheet(`<h3>Dán giờ ca từ văn bản</h3>
+      <p class="page-sub" style="margin-top:-10px">Sao chép phần “Thời gian ca trực” trong văn bản lịch trực rồi dán vào đây. Dòng tên vị trí đứng trước, sau đó là các ca dạng “Ca 1: Từ 7h30 đến 13h”.</p>
+      <textarea class="input" id="pt" rows="7" placeholder="- Trực phòng máy&#10;Ca 1: Từ 7h30 đến 12h; Ca 2: Từ 12h đến 17h; …"></textarea>
+      <div id="pprev" class="pprev"></div>
+      <button class="btn btn-primary btn-block" id="pgo" disabled style="margin-top:14px">Nhập</button>`, (sh) => {
+      let parsed = [];
+      const run = () => {
+        const v = $('#pt', sh).value;
+        parsed = parseShiftText(v);
+        $('#pprev', sh).innerHTML = parsed.length
+          ? parsed.map((p) => `<div class="pp"><b>${esc(p.name)}</b><span>${p.shifts.map((x) => `${x.name}: ${x.start}–${x.end}`).join(' · ')}</span></div>`).join('')
+          : v.trim() ? '<p class="page-sub" style="margin:8px 4px 0">Chưa nhận ra ca nào. Kiểm tra dạng “Ca 1: Từ 7h30 đến 13h”.</p>' : '';
+        const n = parsed.reduce((a, p) => a + p.shifts.length, 0);
+        $('#pgo', sh).disabled = !parsed.length;
+        $('#pgo', sh).textContent = parsed.length ? `Nhập ${parsed.length} vị trí, ${n} ca` : 'Nhập';
+      };
+      $('#pt', sh).addEventListener('input', run);
+      $('#pgo', sh).addEventListener('click', () => {
+        const D = S.duty;
+        parsed.forEach((np) => {
+          const ex = D.positions.find((p) => p.name.toLowerCase() === np.name.toLowerCase());
+          if (ex) np.shifts.forEach((ns) => { const old = ex.shifts.find((x) => x.name === ns.name); if (old) Object.assign(old, { start: ns.start, end: ns.end }); else ex.shifts.push({ id: uid(), ...ns }); });
+          else D.positions.push({ id: uid(), name: np.name, color: DUTY_COLORS[D.positions.length % DUTY_COLORS.length], shifts: np.shifts.map((x) => ({ id: uid(), ...x })), checklist: [] });
+        });
+        if (!D.dayStartSet && parsed[0] && parsed[0].shifts[0]) D.dayStart = parsed[0].shifts[0].start;
+        S.shift.on = true; S.shift.mode = 'week';
+        save(); closeSheet(); render();
+        toast(`Đã nhập ${parsed.length} vị trí trực · ngày trực bắt đầu lúc ${D.dayStart}`);
+      });
+      setTimeout(() => $('#pt', sh).focus(), 320);
+    });
+  }
+
+  function dutyContactSheet() {
+    openSheet(`<h3>Thêm liên hệ</h3>
+      <form id="cf" autocomplete="off">
+        <label class="field"><span>Họ tên</span><input class="input" name="cname" maxlength="60" required></label>
+        <label class="field"><span>Số điện thoại</span><input class="input" name="cphone" type="tel" inputmode="tel" maxlength="20" required></label>
+        <label class="field"><span>Ghi chú</span><input class="input" name="cnote" maxlength="60" placeholder="Ví dụ: phụ trách tổ"></label>
+        <button class="btn btn-primary btn-block" type="submit">Lưu</button>
+      </form>`, (sh) => {
+      const f = $('#cf', sh);
+      f.addEventListener('submit', (e) => {
+        e.preventDefault();
+        if (!f.cname.value.trim() || !f.cphone.value.trim()) return;
+        S.duty.contacts.push({ name: f.cname.value.trim(), phone: f.cphone.value.trim(), note: f.cnote.value.trim() });
+        save(); closeSheet(); render(); toast('Đã lưu liên hệ');
+      });
+      setTimeout(() => f.cname.focus(), 320);
+    });
+  }
+
+  // Xuất file .ics để Lịch của điện thoại tự nhắc trước giờ vào ca (kể cả khi app đóng)
+  function dutyICS(mon) {
+    const ents = Array.from({ length: 7 }, (_, i) => addDays(mon, i)).flatMap(entriesOn);
+    if (!ents.length) { toast('Tuần này chưa có ca nào để xuất'); return; }
+    const f = (t) => { const d = new Date(t); return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`; };
+    const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
+    const escI = (x) => String(x).replace(/[\\;,]/g, (m) => '\\' + m).replace(/\n/g, '\\n');
+    const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//AK Planner//Lich truc//VI', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'X-WR-CALNAME:Lịch trực'];
+    ents.forEach((x) => lines.push('BEGIN:VEVENT', `UID:${x.e.id}@ak-planner`, `DTSTAMP:${stamp}`, `DTSTART:${f(x.start)}`, `DTEND:${f(x.end)}`,
+      `SUMMARY:${escI(`Trực ${x.label}`)}`, ...(x.e.note ? [`DESCRIPTION:${escI(x.e.note)}`] : []),
+      'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${escI(`Sắp vào ca: ${x.label}`)}`, 'TRIGGER:-PT30M', 'END:VALARM', 'END:VEVENT'));
+    lines.push('END:VCALENDAR');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([lines.join('\r\n')], { type: 'text/calendar;charset=utf-8' }));
+    a.download = `lich-truc-${mon}.ics`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    toast(`Đã tạo file ${ents.length} ca. Mở file để thêm vào Lịch, nhắc trước 30 phút`);
+  }
+
   function shiftDaySheet(k) {
     const cur = shiftOn(k);
     openSheet(`<h3>Đổi ca · ${dayLabel(k)}</h3>
@@ -1865,14 +2195,20 @@
 
   function notifSheet() {
     const od = overdueList(), up = upcoming(), rl = readLeftMin(), evs = upcomingEvents(3);
-    const tmrShift = new Date().getHours() >= 17 ? shiftOn(addDays(keyOf(), 1)) : null;
+    const dn = dutyNotes();
     const item = (t, kind) => `<div class="notif">
       <span class="mi" style="${kind === 'od' ? 'background:rgba(255,110,110,.12);color:#f05454' : 'background:var(--primary-soft);color:var(--primary)'}">${ic(kind === 'od' ? 'alert' : 'clock')}</span>
       <div><b>${esc(t.title)}</b><span>${kind === 'od' ? 'Quá hạn · ' : 'Sắp tới · '}${dayLabel(t.date)}, ${fmtTime(t.time)}</span></div></div>`;
     openSheet(`
       <h3>Thông báo</h3>
-      ${od.length || up.length || rl || evs.length || (tmrShift && tmrShift.id !== 'o') ? `<div class="list glass" style="padding:4px 12px">${evs.map(({ e, next }) => `<div class="notif"><span class="mi" style="background:rgba(214,48,58,.1)">${EV_TYPES[e.type][1]}</span><div><b>${esc(e.title)}</b><span>${daysBetween(keyOf(), next) === 0 ? 'Hôm nay' : daysBetween(keyOf(), next) === 1 ? 'Ngày mai' : `Còn ${daysBetween(keyOf(), next)} ngày`} · ${fmtDM(next)}</span></div></div>`).join('')}${tmrShift && tmrShift.id !== 'o' ? `<div class="notif"><span class="mi" style="background:color-mix(in srgb, ${tmrShift.color} 16%, transparent);color:${tmrShift.color}">${tmrShift.short}</span><div><b>Ngày mai: ${tmrShift.name}</b><span>${tmrShift.time || ''}</span></div></div>` : ''}${rl ? `<button class="notif" data-open-read style="width:100%;text-align:left"><span class="mi" style="background:color-mix(in srgb, var(--c-study) 14%, transparent);color:var(--c-study)">${ic('book')}</span><div><b>Còn ${rl} phút đọc sách hôm nay</b><span>Chạm để đọc ngay · giữ chuỗi ${readStreak()} ngày</span></div></button>` : ''}${up.map((t) => item(t, 'up')).join('')}${od.map((t) => item(t, 'od')).join('')}</div>` : '<div class="empty"><div class="big">🔔</div>Bạn không có thông báo nào.<br>Mọi thứ đều đang đúng tiến độ!</div>'}`, (sh) => {
-      sh.addEventListener('click', (e) => { if (e.target.closest('[data-open-read]')) { const L = featuredLesson(); L && openReader(L.id); } });
+      ${od.length || up.length || rl || evs.length || dn.length ? `<div class="list glass" style="padding:4px 12px">${dn.map((x) => `<button class="notif" style="width:100%;text-align:left" ${x.week ? `data-duty-week="${x.week}"` : x.entry ? `data-duty-entry="${x.entry}"` : 'data-duty-go'}><span class="mi" style="background:color-mix(in srgb, ${x.color} 16%, transparent);color:${x.color};font-size:13px;font-weight:800">${x.badge}</span><div><b>${esc(x.title)}</b><span>${esc(x.sub)}</span></div></button>`).join('')}${evs.map(({ e, next }) => `<div class="notif"><span class="mi" style="background:rgba(214,48,58,.1)">${EV_TYPES[e.type][1]}</span><div><b>${esc(e.title)}</b><span>${daysBetween(keyOf(), next) === 0 ? 'Hôm nay' : daysBetween(keyOf(), next) === 1 ? 'Ngày mai' : `Còn ${daysBetween(keyOf(), next)} ngày`} · ${fmtDM(next)}</span></div></div>`).join('')}${rl ? `<button class="notif" data-open-read style="width:100%;text-align:left"><span class="mi" style="background:color-mix(in srgb, var(--c-study) 14%, transparent);color:var(--c-study)">${ic('book')}</span><div><b>Còn ${rl} phút đọc sách hôm nay</b><span>Chạm để đọc ngay · giữ chuỗi ${readStreak()} ngày</span></div></button>` : ''}${up.map((t) => item(t, 'up')).join('')}${od.map((t) => item(t, 'od')).join('')}</div>` : '<div class="empty"><div class="big">🔔</div>Bạn không có thông báo nào.<br>Mọi thứ đều đang đúng tiến độ!</div>'}`, (sh) => {
+      sh.addEventListener('click', (e) => {
+        if (e.target.closest('[data-open-read]')) { const L = featuredLesson(); L && openReader(L.id); return; }
+        const w = e.target.closest('[data-duty-week]'), en = e.target.closest('[data-duty-entry]'), g = e.target.closest('[data-duty-go]');
+        if (w) { closeSheet(true); ui.dutyWeek = w.dataset.dutyWeek; ui.tab === 'shift' ? render() : go('shift'); }
+        else if (en) { dutySheet(S.duty.entries.find((x) => x.id === en.dataset.dutyEntry)); }
+        else if (g) { closeSheet(true); go('shift'); }
+      });
     });
   }
 
@@ -2001,6 +2337,44 @@
       case 'shift-rm': S.shift.cycle.splice(+b.dataset.i, 1); save(); render(); break;
       case 'shift-clear': S.shift.cycle = []; save(); render(); break;
       case 'shift-day': shiftDaySheet(b.dataset.day); break;
+      case 'shift-mode': S.shift.mode = b.dataset.v; save(); render(); break;
+      case 'duty-wk': ui.dutyWeek = addDays(ui.dutyWeek || defaultDutyWeek(), +b.dataset.n); render(); break;
+      case 'duty-week': ui.dutyWeek = b.dataset.mon; ui.tab === 'shift' ? render() : go('shift'); break;
+      case 'duty-add': dutySheet(null, b.dataset.day); break;
+      case 'duty-edit': { const en = S.duty.entries.find((x) => x.id === b.dataset.id); if (en) dutySheet(en); break; }
+      case 'duty-pos': dutyPosSheet(posOf(b.dataset.id)); break;
+      case 'duty-pos-new': dutyPosSheet(); break;
+      case 'duty-paste': dutyPasteSheet(); break;
+      case 'duty-ics': dutyICS(b.dataset.mon); break;
+      case 'duty-contact-new': dutyContactSheet(); break;
+      case 'duty-contact-del': {
+        const i = +b.dataset.i, c = S.duty.contacts.splice(i, 1)[0]; save(); render();
+        toast('Đã xóa liên hệ', { fn: () => { S.duty.contacts.splice(i, 0, c); save(); render(); } });
+        break;
+      }
+      case 'duty-remind': S.duty.remind = !S.duty.remind; save(); render(); break;
+      case 'duty-check': {
+        const en = S.duty.entries.find((x) => x.id === b.dataset.id); if (!en) break;
+        const i = +b.dataset.i; en.checks = en.checks || [];
+        en.checks = en.checks.includes(i) ? en.checks.filter((x) => x !== i) : [...en.checks, i];
+        save(); render();
+        break;
+      }
+      case 'duty-copy': {
+        const mon = b.dataset.mon, prev = S.duty.entries.filter((e) => e.date >= addDays(mon, -7) && e.date <= addDays(mon, -1));
+        if (!prev.length) { toast('Tuần trước chưa có ca nào'); break; }
+        const added = [];
+        prev.forEach((e) => {
+          const nd = addDays(e.date, 7);
+          if (!S.duty.entries.some((x) => x.date === nd && x.pos === e.pos && x.shift === e.shift)) {
+            const ne = { id: uid(), date: nd, pos: e.pos, shift: e.shift, note: e.note || '', swap: false, swapWith: '', reported: false, checks: [] };
+            S.duty.entries.push(ne); added.push(ne);
+          }
+        });
+        save(); render();
+        toast(`Đã chép ${added.length} ca từ tuần trước`, { fn: () => { S.duty.entries = S.duty.entries.filter((x) => !added.includes(x)); save(); render(); } });
+        break;
+      }
       case 'mood': {
         const j = jour(today), v = +b.dataset.v;
         j.mood = j.mood === v ? undefined : v; save(); render();
@@ -2070,6 +2444,7 @@
 
   $('#view').addEventListener('change', (e) => {
     if (e.target.id === 'sh-start' && e.target.value) { S.shift.start = e.target.value; save(); render(); }
+    if (e.target.id === 'duty-daystart' && e.target.value) { S.duty.dayStart = e.target.value; S.duty.dayStartSet = true; save(); render(); toast(`Ngày trực bắt đầu lúc ${e.target.value}`); }
   });
 
   let deferredPrompt = null;
