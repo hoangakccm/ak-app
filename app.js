@@ -33,6 +33,11 @@
     smile: '<circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0M9 9.5h.01M15 9.5h.01"/>',
     alert: '<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5h.01"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"/>',
+    book: '<path d="M2 4.5h6a4 4 0 0 1 4 4V21a3 3 0 0 0-3-3H2z"/><path d="M22 4.5h-6a4 4 0 0 0-4 4V21a3 3 0 0 1 3-3h7z"/>',
+    bookmark: '<path d="M6 3h12v18l-6-4.5L6 21z"/>',
+    quote: '<path d="M10 7H6a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h3v1a3 3 0 0 1-3 3M20 7h-4a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h3v1a3 3 0 0 1-3 3"/>',
+    type: '<path d="M3 7V5h11v2M8.5 5v14M6 19h5M14 13v-1.5h7V13M17.5 11.5V19M16 19h3"/>',
+    sparkle: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>',
     phone: '<rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
   };
   const ic = (name, extra = '') =>
@@ -96,18 +101,28 @@
   }
   let S;
   try { S = JSON.parse(localStorage.getItem(STORE)) || seed(); } catch { S = seed(); }
-  S.tasks = Array.isArray(S.tasks) ? S.tasks : [];
-  S.focusLog = S.focusLog || {};
+  function normalize() {
+    S.tasks = Array.isArray(S.tasks) ? S.tasks : [];
+    S.focusLog = S.focusLog || {};
+    S.readLog = S.readLog || {};
+    S.readDone = S.readDone || {};
+    S.readNotes = S.readNotes || {};
+    S.readSaved = S.readSaved || {};
+    S.customReads = Array.isArray(S.customReads) ? S.customReads : [];
+    S.readGoal = S.readGoal || 10;
+    S.readFont = S.readFont || 17;
+  }
+  normalize();
   const save = () => { try { localStorage.setItem(STORE, JSON.stringify(S)); } catch { toast('Không lưu được dữ liệu'); } };
 
-  const ui = { tab: 'home', calSel: keyOf(), calWeek: mondayOf(keyOf()) };
+  const ui = { tab: 'home', prevTab: 'home', calSel: keyOf(), calWeek: mondayOf(keyOf()), readCat: 'all', quoteOff: 0 };
 
   // ---------- Derived ----------
   const tasksOn = (k) => S.tasks.filter((t) => t.date === k).sort(byTime);
   const byTime = (a, b) => (a.time || '99:99').localeCompare(b.time || '99:99');
   const doneOn = (k) => S.tasks.filter((t) => t.done && t.doneAt && keyOf(new Date(t.doneAt)) === k).length;
   const focusOn = (k) => S.focusLog[k] || 0;
-  const activeOn = (k) => doneOn(k) > 0 || focusOn(k) >= 60;
+  const activeOn = (k) => doneOn(k) > 0 || focusOn(k) >= 60 || (S.readLog[k] || 0) >= 60;
   function streak() {
     let k = keyOf();
     if (!activeOn(k)) k = addDays(k, -1);
@@ -116,7 +131,7 @@
     return n;
   }
   function bestStreak() {
-    const days = new Set(Object.keys(S.focusLog).filter((k) => S.focusLog[k] >= 60));
+    const days = new Set([...Object.keys(S.focusLog).filter((k) => S.focusLog[k] >= 60), ...Object.keys(S.readLog).filter((k) => S.readLog[k] >= 60)]);
     S.tasks.forEach((t) => t.done && t.doneAt && days.add(keyOf(new Date(t.doneAt))));
     const sorted = [...days].sort();
     let best = 0, cur = 0, prev = null;
@@ -191,6 +206,235 @@
     return 'Chào buổi tối';
   }
 
+  // ---------- Đọc mỗi ngày ----------
+  const RC = window.READ_CATS || {};
+  const allReads = () => [...(window.READINGS || []), ...S.customReads];
+  const readOn = (k) => S.readLog[k] || 0;
+  const readGoalSec = () => S.readGoal * 60;
+  const readMins = (L) => Math.max(2, Math.round(L.body.join(' ').split(/\s+/).length / 130));
+  const dayNum = (k = keyOf()) => Math.round(dateOf(k).getTime() / 864e5);
+  const mmss = (sec) => `${Math.floor(sec / 60)}:${pad(Math.floor(sec % 60))}`;
+  function readStreak() {
+    let k = keyOf();
+    if (readOn(k) < readGoalSec()) k = addDays(k, -1);
+    let n = 0;
+    while (readOn(k) >= readGoalSec() && n < 3650) { n++; k = addDays(k, -1); }
+    return n;
+  }
+  function todayLesson() {
+    const k = keyOf(), all = allReads();
+    if (!all.length) return null;
+    const cur = S.readToday && S.readToday.date === k && all.find((x) => x.id === S.readToday.id);
+    if (cur) return cur;
+    const next = all.find((x) => !S.readDone[x.id]) || all[dayNum() % all.length];
+    S.readToday = { date: k, id: next.id }; save();
+    return next;
+  }
+  function nextLesson(after) {
+    const all = allReads(), i = all.findIndex((x) => x.id === after.id);
+    for (let j = 1; j <= all.length; j++) { const L = all[(i + j) % all.length]; if (!S.readDone[L.id]) return L; }
+    return all[(i + 1) % all.length];
+  }
+  const featuredLesson = () => { const L = todayLesson(); return L && S.readDone[L.id] ? nextLesson(L) : L; };
+  function quoteOfDay(off = 0) {
+    const pool = [...(window.QUOTES || []), ...(window.READINGS || []).map((r) => r.quote)];
+    return pool[(((dayNum() + off) % pool.length) + pool.length) % pool.length];
+  }
+  function ring(frac, size, sw) {
+    const r = (size - sw) / 2, C = 2 * Math.PI * r, c = size / 2;
+    return `<svg class="ring-svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true"><circle class="rt" cx="${c}" cy="${c}" r="${r}" fill="none" stroke-width="${sw}"/><circle class="rp" cx="${c}" cy="${c}" r="${r}" fill="none" stroke-width="${sw}" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - Math.min(frac, 1))}" transform="rotate(-90 ${c} ${c})"/></svg>`;
+  }
+  function bodyHTML(body) {
+    let out = '', inList = false;
+    for (const p of body) {
+      if (p.startsWith('• ')) { if (!inList) { out += '<ul>'; inList = true; } out += `<li>${esc(p.slice(2))}</li>`; continue; }
+      if (inList) { out += '</ul>'; inList = false; }
+      out += p.startsWith('## ') ? `<h2>${esc(p.slice(3))}</h2>` : `<p>${esc(p)}</p>`;
+    }
+    return out + (inList ? '</ul>' : '');
+  }
+  const readLeftMin = () => {
+    const left = readGoalSec() - readOn(keyOf());
+    return new Date().getHours() >= 19 && left > 0 ? Math.ceil(left / 60) : 0;
+  };
+
+  function readCardHTML() {
+    const L = featuredLesson(); if (!L) return '';
+    const sec = readOn(keyOf()), met = sec >= readGoalSec();
+    const c = RC[L.cat] || RC.self;
+    return `<button class="read-card glass" data-act="open-read" data-id="${L.id}">
+      <span class="rc-ring">${ring(sec / readGoalSec(), 58, 6)}<b>${Math.floor(sec / 60)}'</b></span>
+      <span class="rc-body">
+        <span class="rc-lbl">${ic('book')} Đọc mỗi ngày · ${met ? 'Đã đạt mục tiêu 🎉' : `${Math.floor(sec / 60)}/${S.readGoal} phút`}</span>
+        <span class="rc-title">${esc(L.title)}</span>
+        <span class="rc-meta"><span class="cat-dot" style="--c:${c.color}"></span>${c.name} · ${readMins(L)} phút</span>
+      </span>
+      <span class="rc-go">${ic('chevR', 'stroke-width="2.6"')}</span>
+    </button>`;
+  }
+
+  // Màn hình đọc toàn trang
+  let R = null;
+  function teardownReader(animate) {
+    if (!R) return;
+    clearInterval(R.t); clearTimeout(R.nt);
+    const el = R.el; R = null;
+    save();
+    if (animate) { el.classList.add('closing'); setTimeout(() => el.remove(), 220); } else el.remove();
+  }
+  function closeReader() {
+    if (!R) return;
+    teardownReader(true);
+    document.body.classList.remove('reading');
+    if (history.state && history.state.reader) history.back();
+    render();
+  }
+  window.addEventListener('popstate', () => { if (R) closeReader(); });
+
+  function openReader(id) {
+    const all = allReads(), L = all.find((x) => x.id === id);
+    if (!L) return;
+    closeSheet(true);
+    if (R) teardownReader(false); else history.pushState({ reader: 1 }, '');
+    const c = RC[L.cat] || RC.self;
+    const el = document.createElement('div');
+    el.className = 'reader';
+    el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-label', L.title);
+    el.style.setProperty('--rfs', S.readFont + 'px');
+    const doneBtn = S.readDone[L.id]
+      ? `<div class="r-done">${ic('check', 'stroke-width="3"')} Bạn đã đọc bài này</div><button class="btn btn-primary btn-block" data-r="next">${ic('arrowR')} Đọc bài tiếp theo</button><p class="r-next-t">Bài sau: ${esc(nextLesson(L).title)}</p>`
+      : `<button class="btn btn-primary btn-block" data-r="done">${ic('check', 'stroke-width="3"')} Hoàn thành bài đọc</button>`;
+    el.innerHTML = `
+      <header class="r-bar">
+        <button class="icon-btn glass" data-r="close" aria-label="Đóng">${ic('chevL')}</button>
+        <div class="r-timer glass" id="r-timer" aria-label="Thời gian đọc hôm nay">${ring(0, 26, 3.5)}<span id="r-time"></span></div>
+        <div class="r-tools">
+          <button class="icon-btn glass" data-r="font" aria-label="Đổi cỡ chữ">${ic('type')}</button>
+          <button class="icon-btn glass ${S.readSaved[L.id] ? 'on' : ''}" data-r="save" aria-label="Lưu bài">${ic('bookmark')}</button>
+        </div>
+        <div class="r-prog"><i id="r-prog"></i></div>
+      </header>
+      <article class="r-body">
+        <span class="r-cat" style="--c:${c.color}">${c.name}</span>
+        <h1>${esc(L.title)}</h1>
+        <p class="r-meta">Bài ${all.indexOf(L) + 1}/${all.length} · khoảng ${readMins(L)} phút đọc</p>
+        ${L.quote && L.quote.t ? `<blockquote class="r-quote">“${esc(L.quote.t)}”${L.quote.a ? `<cite>— ${esc(L.quote.a)}</cite>` : ''}</blockquote>` : ''}
+        ${bodyHTML(L.body)}
+        ${L.key && L.key.length ? `<div class="r-box"><h4>${ic('sparkle')} Ý chính</h4><ul>${L.key.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
+        ${L.action ? `<div class="r-box"><h4>${ic('target')} Thử ngay hôm nay</h4><p>${esc(L.action)}</p><button class="btn btn-ghost" data-r="task">${ic('plus')} Thêm vào việc hôm nay</button></div>` : ''}
+        <div class="r-box"><h4>${ic('edit')} Suy ngẫm</h4>${L.question ? `<p>${esc(L.question)}</p>` : ''}
+          <textarea class="input r-note" id="r-note" rows="4" placeholder="Ghi lại suy nghĩ của bạn…">${esc(S.readNotes[L.id] || '')}</textarea></div>
+        <div id="r-end">${doneBtn}</div>
+        ${L.custom ? `<button class="btn btn-danger btn-block" data-r="delete" style="margin-top:10px">${ic('trash')} Xóa bài này</button>` : ''}
+      </article>`;
+    document.body.appendChild(el);
+    document.body.classList.add('reading');
+    R = { id, el, last: Date.now(), n: 0, t: setInterval(readTick, 1000) };
+    const poke = () => { if (R) R.last = Date.now(); };
+    ['scroll', 'touchstart', 'pointerdown', 'keydown', 'input'].forEach((ev) => el.addEventListener(ev, poke, { passive: true }));
+    el.addEventListener('scroll', () => {
+      const p = el.scrollTop / Math.max(1, el.scrollHeight - el.clientHeight);
+      $('#r-prog', el).style.width = Math.min(100, p * 100) + '%';
+    }, { passive: true });
+    el.addEventListener('click', readerClick);
+    $('#r-note', el).addEventListener('input', (e) => {
+      S.readNotes[L.id] = e.target.value;
+      clearTimeout(R.nt); R.nt = setTimeout(save, 400);
+    });
+    updateReadUI();
+  }
+
+  function readTick() {
+    if (!R || document.hidden) return;
+    const idle = Date.now() - R.last > 90000; // 90 giây không thao tác thì tạm dừng
+    R.el.classList.toggle('idle', idle);
+    if (!idle) {
+      const k = keyOf(), before = readOn(k);
+      S.readLog[k] = before + 1;
+      if (before < readGoalSec() && before + 1 >= readGoalSec()) {
+        toast(`Tuyệt vời! Bạn đã đọc đủ ${S.readGoal} phút hôm nay 📚`);
+        navigator.vibrate && navigator.vibrate([30, 60, 30]);
+      }
+      if (++R.n % 10 === 0) save();
+    }
+    updateReadUI();
+  }
+  function updateReadUI() {
+    if (!R) return;
+    const sec = readOn(keyOf()), g = readGoalSec(), met = sec >= g;
+    $('#r-time', R.el).textContent = R.el.classList.contains('idle') ? 'Tạm dừng' : met ? `✓ ${mmss(sec)}` : `${mmss(sec)} / ${S.readGoal}:00`;
+    const rp = $('#r-timer .rp', R.el), C = +rp.getAttribute('stroke-dasharray');
+    rp.setAttribute('stroke-dashoffset', String(C * (1 - Math.min(sec / g, 1))));
+    $('#r-timer', R.el).classList.toggle('met', met);
+  }
+
+  function readerClick(e) {
+    const b = e.target.closest('[data-r]');
+    if (!b || !R) return;
+    const L = allReads().find((x) => x.id === R.id);
+    switch (b.dataset.r) {
+      case 'close': closeReader(); break;
+      case 'font':
+        S.readFont = S.readFont >= 21 ? 15 : S.readFont + 2;
+        R.el.style.setProperty('--rfs', S.readFont + 'px'); save();
+        toast(`Cỡ chữ: ${{ 15: 'Nhỏ', 17: 'Vừa', 19: 'Lớn', 21: 'Rất lớn' }[S.readFont] || S.readFont}`);
+        break;
+      case 'save':
+        if (S.readSaved[L.id]) delete S.readSaved[L.id]; else S.readSaved[L.id] = Date.now();
+        b.classList.toggle('on', !!S.readSaved[L.id]); save();
+        toast(S.readSaved[L.id] ? 'Đã lưu vào mục Đã lưu' : 'Đã bỏ lưu');
+        break;
+      case 'task':
+        S.tasks.push({ id: uid(), title: L.action, date: keyOf(), time: '', cat: 'personal', done: false });
+        save(); b.disabled = true; b.innerHTML = `${ic('check')} Đã thêm vào việc hôm nay`;
+        break;
+      case 'done':
+        S.readDone[L.id] = Date.now(); save();
+        navigator.vibrate && navigator.vibrate(20);
+        toast('Hoàn thành bài đọc ✓');
+        $('#r-end', R.el).innerHTML = `<div class="r-done">${ic('check', 'stroke-width="3"')} Bạn đã hoàn thành bài này</div>
+          <button class="btn btn-primary btn-block" data-r="next">${ic('arrowR')} Đọc bài tiếp theo</button>
+          <p class="r-next-t">Bài sau: ${esc(nextLesson(L).title)}</p>`;
+        break;
+      case 'next': openReader(nextLesson(L).id); R.el.scrollTop = 0; break;
+      case 'delete':
+        if (confirm('Xóa bài đọc này?')) {
+          S.customReads = S.customReads.filter((x) => x.id !== L.id);
+          delete S.readDone[L.id]; delete S.readNotes[L.id]; delete S.readSaved[L.id];
+          save(); closeReader(); toast('Đã xóa bài đọc');
+        }
+        break;
+    }
+  }
+
+  function addReadSheet() {
+    let cat = 'self';
+    openSheet(`
+      <h3>Thêm bài đọc của bạn</h3>
+      <form id="rf" autocomplete="off">
+        <label class="field"><span>Tiêu đề</span><input class="input" name="title" maxlength="100" required placeholder="Ví dụ: Ghi chép từ sách tháng này"></label>
+        <div class="field"><span>Chủ đề</span><div class="chips" id="rcat">${Object.entries(RC).map(([id, c]) => `<button type="button" class="chip ${id === cat ? 'on' : ''}" data-c="${id}"><span class="cat-dot" style="--c:${c.color}"></span>${c.name}</button>`).join('')}</div></div>
+        <label class="field"><span>Nội dung</span><textarea class="input" name="body" rows="7" required placeholder="Dán hoặc gõ nội dung. Để một dòng trống giữa các đoạn."></textarea></label>
+        <label class="field"><span>Câu châm ngôn (không bắt buộc)</span><input class="input" name="qt" maxlength="200"></label>
+        <label class="field"><span>Tác giả câu châm ngôn</span><input class="input" name="qa" maxlength="60"></label>
+        <button class="btn btn-primary btn-block" type="submit">Lưu bài đọc</button>
+      </form>`, (sh) => {
+      $('#rcat', sh).addEventListener('click', (e) => {
+        const c = e.target.closest('.chip'); if (!c) return;
+        cat = c.dataset.c; $$('#rcat .chip', sh).forEach((x) => x.classList.toggle('on', x === c));
+      });
+      $('#rf', sh).addEventListener('submit', (e) => {
+        e.preventDefault();
+        const f = e.target;
+        const body = f.body.value.split(/\n\s*\n/).map((p) => p.replace(/\s*\n\s*/g, ' ').trim()).filter(Boolean);
+        if (!f.title.value.trim() || !body.length) return;
+        const L = { id: 'u-' + uid(), custom: true, cat, title: f.title.value.trim(), body, quote: { t: f.qt.value.trim(), a: f.qa.value.trim() } };
+        S.customReads.push(L); save(); closeSheet(); render();
+        toast('Đã thêm vào thư viện');
+      });
+    });
+  }
+
   // ---------- Views ----------
   function viewHome() {
     const today = keyOf();
@@ -199,7 +443,7 @@
     const done = list.filter((t) => t.done).length;
     const pct = total ? Math.round((done / total) * 100) : 0;
     const f = fmtDur(focusOn(today) + runningElapsed());
-    const hasNotif = upcoming().length > 0 || overdueList().length > 0;
+    const hasNotif = upcoming().length > 0 || overdueList().length > 0 || readLeftMin() > 0;
 
     let title = 'Bắt đầu thôi!', sub = 'Thêm việc đầu tiên cho hôm nay nhé.';
     if (total) {
@@ -262,6 +506,8 @@
         </div>
       </button>
 
+      ${readCardHTML()}
+
       <div class="section-head">
         <h3>Việc của tôi</h3>
         <button class="link" data-act="see-all">Xem tất cả ${ic('chevR')}</button>
@@ -271,6 +517,9 @@
         ${list.length > shown.length ? `<button class="link" style="align-self:center;margin-top:4px" data-act="see-all">+${list.length - shown.length} việc khác</button>` : ''}
       </div>`;
   }
+
+  const pageHead = (title, sub) => `<div class="page-head"><div><h1 class="page-title">${title}</h1><p class="page-sub">${sub}</p></div>
+    <button class="head-avatar" data-act="go-profile" aria-label="Trang cá nhân">${avatarHTML('sm')}</button></div>`;
 
   const emptyHTML = (msg, cta) => `<div class="empty glass"><div class="big">🌤️</div>${msg}${cta ? `<div><button class="btn btn-ghost" data-act="add">${ic('plus')} ${cta}</button></div>` : ''}</div>`;
 
@@ -282,8 +531,7 @@
     const list = tasksOn(ui.calSel);
     const doneN = list.filter((t) => t.done).length;
     return `
-      <h1 class="page-title">Lịch</h1>
-      <p class="page-sub">Sắp xếp kế hoạch theo từng ngày.</p>
+      ${pageHead('Lịch', 'Sắp xếp kế hoạch theo từng ngày.')}
       <div class="cal-head">
         <span class="month">Tháng ${mid.getMonth() + 1}, ${mid.getFullYear()}</span>
         <div class="cal-nav">
@@ -312,6 +560,7 @@
     const days = Array.from({ length: 7 }, (_, i) => addDays(today, i - 6));
     const doneArr = days.map(doneOn);
     const focusArr = days.map((k) => Math.round((focusOn(k) + (k === today ? runningElapsed() : 0)) / 60));
+    const readArr = days.map((k) => Math.round(readOn(k) / 60));
     const planned = S.tasks.filter((t) => days.includes(t.date));
     const rate = planned.length ? Math.round((planned.filter((t) => t.done).length / planned.length) * 100) : 0;
     const focusTot = fmtDur(focusArr.reduce((a, b) => a + b, 0) * 60);
@@ -334,8 +583,7 @@
     }).join('');
 
     return `
-      <h1 class="page-title">Thống kê</h1>
-      <p class="page-sub">Nhìn lại 7 ngày gần nhất của bạn.</p>
+      ${pageHead('Thống kê', 'Nhìn lại 7 ngày gần nhất của bạn.')}
       <div class="kpis">
         <div class="kpi glass"><span class="stat-ic ic-green">${ic('target', 'stroke-width="2.4"')}</span><div class="v">${rate}<small>%</small></div><div class="l">Tỉ lệ hoàn thành</div></div>
         <div class="kpi glass"><span class="stat-ic ic-gold">${ic('clock', 'stroke-width="2.4"')}</span><div class="v">${focusTot.h}<small>h</small> ${pad(focusTot.m)}<small>m</small></div><div class="l">Thời gian tập trung</div></div>
@@ -344,13 +592,62 @@
       </div>
       <div class="card glass"><div class="card-head"><h4>Việc hoàn thành</h4><span>${doneArr.reduce((a, b) => a + b, 0)} việc</span></div>${barChart(doneArr, '', '')}</div>
       <div class="card glass"><div class="card-head"><h4>Phút tập trung</h4><span>${focusArr.reduce((a, b) => a + b, 0)} phút</span></div>${barChart(focusArr, 'gold', '')}</div>
+      <div class="card glass"><div class="card-head"><h4>Phút đọc sách</h4><span>${readArr.reduce((a, b) => a + b, 0)} phút · mục tiêu ${S.readGoal}/ngày</span></div>${barChart(readArr, 'blue', '')}</div>
       <div class="card glass"><div class="card-head"><h4>Theo danh mục</h4><span>Tất cả thời gian</span></div>${catRows}</div>
       <button class="btn btn-primary btn-block" data-act="focus">${ic('play')} Bắt đầu phiên tập trung</button>`;
+  }
+
+  function viewRead() {
+    const all = allReads(), sec = readOn(keyOf());
+    const L = todayLesson(), feat = featuredLesson();
+    const doneN = all.filter((x) => S.readDone[x.id]).length;
+    const totalMin = Math.round(Object.values(S.readLog).reduce((a, b) => a + b, 0) / 60);
+    const q = quoteOfDay(ui.quoteOff);
+    const f = ui.readCat;
+    const list = all.filter((x) => f === 'all' || (f === 'saved' ? S.readSaved[x.id] : x.cat === f));
+    const notes = all.filter((x) => (S.readNotes[x.id] || '').trim());
+    const fc = feat && (RC[feat.cat] || RC.self);
+    const chips = [['all', 'Tất cả'], ...Object.entries(RC).map(([id, c]) => [id, c.name]), ['saved', 'Đã lưu']];
+    const row = (x) => {
+      const c = RC[x.cat] || RC.self, i = all.indexOf(x) + 1, done = !!S.readDone[x.id];
+      return `<button class="lesson glass ${done ? 'read' : ''}" style="--c:${c.color}" data-act="open-read" data-id="${x.id}">
+        <span class="ln">${done ? ic('check', 'stroke-width="3"') : x.custom ? ic('edit') : i}</span>
+        <span><span class="lt">${esc(x.title)}</span><span class="lm"><span class="cat-dot" style="--c:${c.color}"></span>${c.name} · ${readMins(x)} phút</span></span>
+        <span class="lb">${S.readSaved[x.id] ? ic('bookmark') : ''}</span></button>`;
+    };
+    return `${pageHead('Đọc mỗi ngày', `${S.readGoal} phút mỗi ngày, tốt hơn hôm qua.`)}
+      <section class="read-hero glass">
+        <div class="rh-ring">${ring(sec / readGoalSec(), 118, 11)}<div class="rh-txt"><b>${Math.floor(sec / 60)}</b><span>/ ${S.readGoal} phút</span></div></div>
+        <div class="rh-stats">
+          <div><b>${readStreak()} ${ic('flame')}</b><span>ngày đạt mục tiêu liên tục</span></div>
+          <div><b>${doneN}/${all.length}</b><span>bài đã đọc</span></div>
+          <div><b>${totalMin}</b><span>phút đã đọc</span></div>
+        </div>
+      </section>
+      <button class="quote-card" data-act="next-quote">
+        <span class="qc-lbl">${ic('quote')} Châm ngôn hôm nay</span>
+        <span class="qc-t">“${esc(q.t)}”</span>
+        <span class="qc-a">— ${esc(q.a)}</span>
+        <span class="qc-hint">Chạm để xem câu khác</span>
+      </button>
+      ${feat ? `<div class="section-head"><h3>${L && S.readDone[L.id] ? 'Đọc tiếp' : 'Bài hôm nay'}</h3></div>
+      <button class="lesson-feat glass" data-act="open-read" data-id="${feat.id}">
+        <span class="r-cat" style="--c:${fc.color}">${fc.name}</span>
+        <h4>${esc(feat.title)}</h4>
+        <p>${esc(feat.body.find((p) => !p.startsWith('## ') && !p.startsWith('• ')) || '')}</p>
+        <span class="lf-foot"><span>${ic('clock')} Khoảng ${readMins(feat)} phút</span><span class="btn btn-primary">${ic('book')} Đọc ngay</span></span>
+      </button>` : ''}
+      <div class="section-head"><h3>Thư viện</h3><button class="link" data-act="add-read">${ic('plus')} Thêm bài</button></div>
+      <div class="chip-row">${chips.map(([id, n]) => `<button class="chip ${f === id ? 'on' : ''}" data-act="read-cat" data-cat="${id}">${n}</button>`).join('')}</div>
+      <div class="lessons">${list.length ? list.map(row).join('') : `<div class="empty glass"><div class="big">📚</div>${f === 'saved' ? 'Chưa có bài nào được lưu.<br>Bấm biểu tượng dấu trang khi đọc để lưu.' : 'Chưa có bài trong mục này.'}</div>`}</div>
+      ${notes.length ? `<div class="section-head"><h3>Ghi chú của tôi</h3></div>
+      ${notes.map((x) => `<button class="note glass" data-act="open-read" data-id="${x.id}"><b>${esc(x.title)}</b><p>${esc(S.readNotes[x.id])}</p></button>`).join('')}` : ''}`;
   }
 
   function viewProfile() {
     const themeLbl = { auto: 'Theo hệ thống', light: 'Sáng', dark: 'Tối' }[S.theme];
     return `
+      <div class="topbar" style="justify-content:flex-start"><button class="icon-btn glass" data-act="go-back" aria-label="Quay lại">${ic('chevL')}</button></div>
       <div class="profile-top">
         <div class="avatar-wrap">${avatarHTML('lg')}<button class="avatar-edit" data-act="avatar" aria-label="Đổi ảnh đại diện">${ic('camera')}</button></div>
         <h2>${esc(S.name || 'Bạn')}</h2>
@@ -361,6 +658,7 @@
         <button class="menu-item" data-act="avatar"><span class="mi">${ic('smile')}</span><span class="grow">Ảnh đại diện</span><span class="chev">${ic('chevR')}</span></button>
         <button class="menu-item" data-act="theme"><span class="mi">${ic('moon')}</span><span class="grow">Giao diện</span><span class="hint">${themeLbl}</span></button>
         <button class="menu-item" data-act="preset"><span class="mi">${ic('clock')}</span><span class="grow">Thời lượng tập trung</span><span class="hint">${S.focusPreset} phút</span></button>
+        <button class="menu-item" data-act="read-goal"><span class="mi">${ic('book')}</span><span class="grow">Mục tiêu đọc mỗi ngày</span><span class="hint">${S.readGoal} phút</span></button>
       </div>
       <div class="list glass">
         <button class="menu-item" data-act="install"><span class="mi">${ic('phone')}</span><span class="grow">Cài lên màn hình chính</span><span class="chev">${ic('chevR')}</span></button>
@@ -371,7 +669,7 @@
       <p class="footnote">Dữ liệu được lưu riêng trên thiết bị này.</p>`;
   }
 
-  const VIEWS = { home: viewHome, calendar: viewCalendar, analytics: viewAnalytics, profile: viewProfile };
+  const VIEWS = { home: viewHome, calendar: viewCalendar, read: viewRead, analytics: viewAnalytics, profile: viewProfile };
 
   function render(animate = false) {
     const v = $('#view');
@@ -386,13 +684,14 @@
 
   function go(tab) {
     if (ui.tab === tab) return;
+    if (tab === 'profile') ui.prevTab = ui.tab;
     ui.tab = tab;
     render(true);
     window.scrollTo({ top: 0 });
   }
 
   // ---------- Tab bar ----------
-  const TAB_META = { home: ['home', 'Trang chủ'], calendar: ['calendar', 'Lịch'], analytics: ['chart', 'Thống kê'], profile: ['user', 'Cá nhân'] };
+  const TAB_META = { home: ['home', 'Trang chủ'], calendar: ['calendar', 'Lịch'], read: ['book', 'Đọc sách'], analytics: ['chart', 'Thống kê'] };
   $$('.tab').forEach((b) => {
     const [i, l] = TAB_META[b.dataset.tab];
     b.innerHTML = `<span class="tab-ic">${ic(i)}</span>${l}`;
@@ -436,7 +735,7 @@
     $$('.sheet, .backdrop', root).forEach((el) => { el.style.transform = ''; el.classList.add('closing'); });
     setTimeout(() => { if ($('.closing', root)) root.innerHTML = ''; }, 220);
   }
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSheet(); });
+  document.addEventListener('keydown', (e) => { if (e.key !== 'Escape') return; if ($('.sheet')) closeSheet(); else if (R) closeReader(); });
 
   function taskSheet(existing, presetDate) {
     const t = existing || { title: '', date: presetDate || (ui.tab === 'calendar' ? ui.calSel : keyOf()), time: '', cat: 'work' };
@@ -661,13 +960,15 @@
   }
 
   function notifSheet() {
-    const od = overdueList(), up = upcoming();
+    const od = overdueList(), up = upcoming(), rl = readLeftMin();
     const item = (t, kind) => `<div class="notif">
       <span class="mi" style="${kind === 'od' ? 'background:rgba(255,110,110,.12);color:#f05454' : 'background:var(--primary-soft);color:var(--primary)'}">${ic(kind === 'od' ? 'alert' : 'clock')}</span>
       <div><b>${esc(t.title)}</b><span>${kind === 'od' ? 'Quá hạn · ' : 'Sắp tới · '}${dayLabel(t.date)}, ${fmtTime(t.time)}</span></div></div>`;
     openSheet(`
       <h3>Thông báo</h3>
-      ${od.length || up.length ? `<div class="list glass" style="padding:4px 12px">${up.map((t) => item(t, 'up')).join('')}${od.map((t) => item(t, 'od')).join('')}</div>` : '<div class="empty"><div class="big">🔔</div>Bạn không có thông báo nào.<br>Mọi thứ đều đang đúng tiến độ!</div>'}`);
+      ${od.length || up.length || rl ? `<div class="list glass" style="padding:4px 12px">${rl ? `<button class="notif" data-open-read style="width:100%;text-align:left"><span class="mi" style="background:color-mix(in srgb, var(--c-study) 14%, transparent);color:var(--c-study)">${ic('book')}</span><div><b>Còn ${rl} phút đọc sách hôm nay</b><span>Chạm để đọc ngay · giữ chuỗi ${readStreak()} ngày</span></div></button>` : ''}${up.map((t) => item(t, 'up')).join('')}${od.map((t) => item(t, 'od')).join('')}</div>` : '<div class="empty"><div class="big">🔔</div>Bạn không có thông báo nào.<br>Mọi thứ đều đang đúng tiến độ!</div>'}`, (sh) => {
+      sh.addEventListener('click', (e) => { if (e.target.closest('[data-open-read]')) { const L = featuredLesson(); L && openReader(L.id); } });
+    });
   }
 
   // ---------- Profile actions ----------
@@ -744,7 +1045,7 @@
         const d = JSON.parse(await inp.files[0].text());
         if (!d || !Array.isArray(d.tasks)) throw 0;
         S = { ...seed(), ...d, focusLog: d.focusLog || {} };
-        save(); applyTheme(); render(); toast('Đã khôi phục dữ liệu');
+        normalize(); save(); applyTheme(); render(); toast('Đã khôi phục dữ liệu');
       } catch { toast('File sao lưu không hợp lệ'); }
     };
     inp.click();
@@ -766,6 +1067,21 @@
       case 'focus': focusSheet(); break;
       case 'go-analytics': go('analytics'); break;
       case 'go-profile': go('profile'); break;
+      case 'go-back': go(ui.prevTab && ui.prevTab !== 'profile' ? ui.prevTab : 'home'); break;
+      case 'open-read': openReader(b.dataset.id); break;
+      case 'read-cat': ui.readCat = b.dataset.cat; render(); break;
+      case 'add-read': addReadSheet(); break;
+      case 'next-quote': {
+        ui.quoteOff++;
+        const q = quoteOfDay(ui.quoteOff);
+        $('.qc-t', b).textContent = `“${q.t}”`; $('.qc-a', b).textContent = `— ${q.a}`;
+        $('.qc-lbl', b).lastChild.textContent = ' Châm ngôn';
+        b.classList.remove('flip'); void b.offsetWidth; b.classList.add('flip');
+        break;
+      }
+      case 'read-goal':
+        choiceSheet('Mục tiêu đọc mỗi ngày', [5, 10, 15, 20, 30].map((p) => [p, `${p} phút`, 'book']), S.readGoal, (v) => { S.readGoal = +v; save(); });
+        break;
       case 'see-all': ui.calSel = keyOf(); ui.calWeek = mondayOf(keyOf()); go('calendar'); break;
       case 'week-prev': ui.calWeek = addDays(ui.calWeek, -7); ui.calSel = ui.calWeek; render(); break;
       case 'week-next': ui.calWeek = addDays(ui.calWeek, 7); ui.calSel = ui.calWeek; render(); break;
@@ -783,9 +1099,9 @@
       case 'export': exportData(); break;
       case 'import': importData(); break;
       case 'reset':
-        if (confirm('Xóa toàn bộ công việc và dữ liệu tập trung? Không thể hoàn tác.')) {
-          const keep = { name: S.name, tagline: S.tagline, avatar: S.avatar, theme: S.theme, focusPreset: S.focusPreset };
-          S = { ...seed(), ...keep, tasks: [] }; save(); render(); toast('Đã xóa dữ liệu');
+        if (confirm('Xóa toàn bộ công việc, dữ liệu tập trung và đọc sách? Không thể hoàn tác.')) {
+          const keep = { name: S.name, tagline: S.tagline, avatar: S.avatar, theme: S.theme, focusPreset: S.focusPreset, readGoal: S.readGoal, readFont: S.readFont };
+          S = { ...seed(), ...keep, tasks: [] }; normalize(); save(); render(); toast('Đã xóa dữ liệu');
         }
         break;
     }
@@ -800,7 +1116,8 @@
     if (document.hidden) return;
     if (S.timer && S.timer.endsAt) ensureTick();
     if (keyOf() !== lastDay) { lastDay = keyOf(); ui.calSel = lastDay; ui.calWeek = mondayOf(lastDay); }
-    if (!$('.sheet')) render();
+    if (R) { R.last = Date.now(); updateReadUI(); }
+    if (!$('.sheet') && !R) render();
   });
 
   // ---------- Boot ----------

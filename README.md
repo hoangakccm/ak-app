@@ -8,6 +8,7 @@
 - **Thêm/sửa công việc**: tên, ngày, giờ, danh mục (Công việc, Sức khỏe, Học tập, Cá nhân); menu ⋮ để sửa, dời sang ngày mai, xóa.
 - **Lịch**: xem theo tuần, chấm báo số việc mỗi ngày.
 - **Tập trung (Pomodoro)**: bấm thẻ “Tập trung”, chọn 15/25/45/60 phút; vẫn đếm đúng khi chuyển app, có chuông khi hết giờ.
+- **Đọc mỗi ngày** (tab Đọc sách): 21 bài đọc ngắn tự biên soạn về phát triển bản thân, kỹ năng, kiến thức và đạo đức. Mỗi bài có châm ngôn, ý chính, việc “Thử ngay hôm nay” và ô ghi chú suy ngẫm. Đồng hồ đọc hướng tới mục tiêu 10 phút/ngày (đổi được), tự tạm dừng khi rời app hoặc 90 giây không thao tác. Có chuỗi ngày đọc, châm ngôn mỗi ngày, lưu bài, chỉnh cỡ chữ và thêm bài đọc của riêng bạn.
 - **Thống kê**: tỉ lệ hoàn thành 7 ngày, biểu đồ việc xong và phút tập trung, chuỗi dài nhất, theo danh mục.
 - **Cá nhân**: đổi tên, lời nhắn, ảnh đại diện (emoji hoặc ảnh từ máy), giao diện Sáng/Tối/Theo hệ thống, sao lưu và khôi phục dữ liệu (JSON).
 - **Tìm kiếm** (có dấu hoặc không dấu) và **thông báo** việc sắp tới hoặc quá hạn.
@@ -34,6 +35,7 @@ python3 -m http.server 8000
 index.html            khung trang
 styles.css            giao diện (token màu, sáng/tối)
 app.js                toàn bộ logic
+readings.js           nội dung bài đọc và châm ngôn
 sw.js                 service worker (offline)
 manifest.webmanifest  thông tin PWA
 icons/                biểu tượng app
