@@ -1,9 +1,15 @@
 // Service worker: cho phép app chạy offline sau lần mở đầu tiên.
-const CACHE = 'ak-planner-v13';
+// Luôn hỏi lại máy chủ để lấy bản mới nhất; chỉ dùng bản lưu khi mất mạng.
+const VERSION = '1.14';
+const CACHE = `ak-planner-${VERSION}`;
 const ASSETS = ['./', 'index.html', 'styles.css', 'app.js', 'readings.js', 'lunar.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  e.waitUntil(
+    caches.open(CACHE)
+      .then((c) => c.addAll(ASSETS.map((u) => new Request(u, { cache: 'reload' }))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', (e) => {
@@ -14,18 +20,21 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-// Mạng trước (để luôn có bản mới), rớt mạng thì dùng bản đã lưu.
 self.addEventListener('fetch', (e) => {
-  if (e.request.method !== 'GET') return;
+  const req = e.request;
+  if (req.method !== 'GET') return;
+  const sameOrigin = new URL(req.url).origin === location.origin;
+  // Bỏ qua bộ nhớ đệm HTTP của trình duyệt/CDN cho file của app để không bị kẹt bản cũ
+  const net = sameOrigin ? (req.mode === 'navigate' ? new Request(req.url, { cache: 'no-cache' }) : new Request(req, { cache: 'no-cache' })) : req;
   e.respondWith(
-    fetch(e.request)
+    fetch(net)
       .then((res) => {
-        if (res.ok && (new URL(e.request.url).origin === location.origin || e.request.url.includes('fonts.g'))) {
+        if (res.ok && (sameOrigin || req.url.includes('fonts.g'))) {
           const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(e.request, copy));
+          caches.open(CACHE).then((c) => c.put(req, copy));
         }
         return res;
       })
-      .catch(() => caches.match(e.request).then((r) => r || caches.match('index.html')))
+      .catch(() => caches.match(req, { ignoreSearch: true }).then((r) => r || caches.match('index.html')))
   );
 });

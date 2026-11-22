@@ -97,6 +97,8 @@
     return { h: Math.floor(m / 60), m: m % 60 };
   }
 
+  const APP_VERSION = '1.14 · lịch trực theo tuần';
+
   // ---------- State ----------
   const STORE = 'ak-planner-v1';
   function seed() {
@@ -1705,7 +1707,7 @@
         <button class="menu-item" data-act="import"><span class="mi">${ic('upload')}</span><span class="grow">Khôi phục dữ liệu</span><span class="chev">${ic('chevR')}</span></button>
         <button class="menu-item danger" data-act="reset"><span class="mi">${ic('trash')}</span><span class="grow">Xóa toàn bộ dữ liệu</span></button>
       </div>
-      <p class="footnote">Dữ liệu được lưu riêng trên thiết bị này.</p>`;
+      <p class="footnote">Dữ liệu được lưu riêng trên thiết bị này.<br>Phiên bản ${APP_VERSION}</p>`;
   }
 
   const VIEWS = { home: viewHome, calendar: viewCalendar, read: viewRead, tools: viewTools, analytics: viewAnalytics, profile: viewProfile, journal: viewJournal, habits: viewHabits, events: viewEvents, lunar: viewLunar, money: viewMoney, shift: viewShift, wins: viewWins, letters: viewLetters };
@@ -3017,6 +3019,17 @@
   dailyWelcome();
   if (S.timer && S.timer.endsAt) ensureTick();
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    // Tự kiểm tra bản mới mỗi khi mở lại app; có bản mới thì tải lại ngay (hoặc hỏi nếu đang nhập dở)
+    const hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => {
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
+    }).catch(() => {});
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || reloading) return;
+      if ($('.sheet') || R || $('.onboard') || $('.lv') || $('.pv')) {
+        toast('Đã có phiên bản mới của app', { label: 'Cập nhật', fn: () => location.reload() }, 'ok');
+      } else { reloading = true; location.reload(); }
+    });
   }
 })();
