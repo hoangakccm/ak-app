@@ -1,5 +1,5 @@
 // Service worker: cho phép app chạy offline sau lần mở đầu tiên.
-const CACHE = 'ak-planner-v4';
+const CACHE = 'ak-planner-v5';
 const ASSETS = ['./', 'index.html', 'styles.css', 'app.js', 'readings.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {

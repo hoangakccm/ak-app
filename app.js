@@ -38,6 +38,13 @@
     quote: '<path d="M10 7H6a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h3v1a3 3 0 0 1-3 3M20 7h-4a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h3v1a3 3 0 0 1-3 3"/>',
     type: '<path d="M3 7V5h11v2M8.5 5v14M6 19h5M14 13v-1.5h7V13M17.5 11.5V19M16 19h3"/>',
     sparkle: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>',
+    repeat: '<path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/>',
+    list: '<path d="M10 6h10M10 12h10M10 18h10"/><path d="m3.5 6 1.2 1.2L7 5M3.5 12l1.2 1.2L7 11M3.5 18l1.2 1.2L7 17"/>',
+    star: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>',
+    drop: '<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/>',
+    x: '<path d="M6 6l12 12M18 6 6 18"/>',
+    minus: '<path d="M5 12h14"/>',
+    journal: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 7.5h6M9 11.5h6M9 15.5h4"/>',
     phone: '<rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
   };
   const ic = (name, extra = '') =>
@@ -83,18 +90,14 @@
   // ---------- State ----------
   const STORE = 'ak-planner-v1';
   function seed() {
-    const t = keyOf();
     return {
-      name: 'Hoàng',
+      name: '',
+      onboarded: false,
       tagline: 'Hôm nay thật năng suất và chinh phục mục tiêu nhé.',
       avatar: { type: 'emoji', value: '👮🏻‍♂️' },
       theme: 'auto',
       focusPreset: 25,
-      tasks: [
-        { id: uid(), title: 'Thiết kế giao diện mới', date: t, time: '10:00', cat: 'work', done: true, doneAt: Date.now() },
-        { id: uid(), title: 'Tập thể dục', date: t, time: '18:00', cat: 'health', done: false },
-        { id: uid(), title: 'Đọc sách', date: t, time: '20:00', cat: 'study', done: false },
-      ],
+      tasks: [],
       focusLog: {},
       timer: null,
     };
@@ -111,16 +114,43 @@
     S.customReads = Array.isArray(S.customReads) ? S.customReads : [];
     S.readGoal = S.readGoal || 10;
     S.readFont = S.readFont || 17;
+    S.water = S.water || {};
+    S.waterGoal = S.waterGoal || 8;
+    S.journal = S.journal || {};
+    S.top3 = S.top3 || {};
+    if (S.onboarded === undefined) S.onboarded = true; // người dùng cũ không cần màn chào
   }
   normalize();
   const save = () => { try { localStorage.setItem(STORE, JSON.stringify(S)); } catch { toast('Không lưu được dữ liệu'); } };
 
-  const ui = { tab: 'home', prevTab: 'home', calSel: keyOf(), calWeek: mondayOf(keyOf()), readCat: 'all', quoteOff: 0 };
+  const ui = { tab: 'home', prevTab: 'home', calSel: keyOf(), calWeek: mondayOf(keyOf()), readCat: 'all', quoteOff: 0, open: {}, showDone: false };
 
   // ---------- Derived ----------
-  const tasksOn = (k) => S.tasks.filter((t) => t.date === k).sort(byTime);
+  // Việc lặp lại: một "mẫu" sinh ra các lần lặp ảo theo ngày; trạng thái xong lưu theo từng ngày.
+  const REPEATS = { daily: 'Hằng ngày', weekdays: 'T2 – T6', weekly: 'Hằng tuần', monthly: 'Hằng tháng', days: 'Chọn thứ' };
+  function occurs(t, k) {
+    if (!t.repeat || k < t.date || (t.skip && t.skip[k])) return false;
+    const d = dateOf(k), wd = d.getDay();
+    switch (t.repeat) {
+      case 'daily': return true;
+      case 'weekdays': return wd >= 1 && wd <= 5;
+      case 'weekly': return wd === dateOf(t.date).getDay();
+      case 'monthly': return d.getDate() === dateOf(t.date).getDate();
+      case 'days': return (t.days || []).includes(wd);
+    }
+    return false;
+  }
+  const inst = (t, k) => ({ ...t, occ: k, date: k, done: !!(t.doneDates && t.doneDates[k]), doneAt: (t.doneDates && t.doneDates[k]) || null, src: t });
   const byTime = (a, b) => (a.time || '99:99').localeCompare(b.time || '99:99');
-  const doneOn = (k) => S.tasks.filter((t) => t.done && t.doneAt && keyOf(new Date(t.doneAt)) === k).length;
+  const byDoneTime = (a, b) => (a.done - b.done) || byTime(a, b);
+  const tasksOn = (k) => [...S.tasks.filter((t) => !t.repeat && t.date === k), ...S.tasks.filter((t) => occurs(t, k)).map((t) => inst(t, k))].sort(byTime);
+  const tkey = (t) => (t.occ ? `${t.id}|${t.occ}` : t.id);
+  const getT = (id, occ) => { const t = S.tasks.find((x) => x.id === id); return t && t.repeat ? inst(t, occ || keyOf()) : t; };
+  const doneOn = (k) => S.tasks.reduce((n, t) => n + (t.repeat ? (t.doneDates && t.doneDates[k] ? 1 : 0) : (t.done && t.doneAt && keyOf(new Date(t.doneAt)) === k ? 1 : 0)), 0);
+  const subDone = (t) => (t.repeat ? ((t.subDone || {})[t.occ || keyOf()] || []) : (t.subs || []).filter((x) => x.done).map((x) => x.id));
+  const waterOn = (k) => S.water[k] || 0;
+  const MOODS = [{ e: '😞', l: 'Tệ' }, { e: '😕', l: 'Không vui' }, { e: '😐', l: 'Bình thường' }, { e: '🙂', l: 'Vui' }, { e: '😄', l: 'Tuyệt vời' }];
+  const jour = (k) => (S.journal[k] = S.journal[k] || {});
   const focusOn = (k) => S.focusLog[k] || 0;
   const activeOn = (k) => doneOn(k) > 0 || focusOn(k) >= 60 || (S.readLog[k] || 0) >= 60;
   function streak() {
@@ -132,7 +162,7 @@
   }
   function bestStreak() {
     const days = new Set([...Object.keys(S.focusLog).filter((k) => S.focusLog[k] >= 60), ...Object.keys(S.readLog).filter((k) => S.readLog[k] >= 60)]);
-    S.tasks.forEach((t) => t.done && t.doneAt && days.add(keyOf(new Date(t.doneAt))));
+    S.tasks.forEach((t) => (t.repeat ? Object.keys(t.doneDates || {}).forEach((k) => days.add(k)) : t.done && t.doneAt && days.add(keyOf(new Date(t.doneAt)))));
     const sorted = [...days].sort();
     let best = 0, cur = 0, prev = null;
     for (const k of sorted) { cur = prev && addDays(prev, 1) === k ? cur + 1 : 1; best = Math.max(best, cur); prev = k; }
@@ -160,7 +190,9 @@
     const today = keyOf(now);
     return tasksOn(today).filter((t) => !t.done && t.time && t.time >= nowT && (in3.getDate() !== now.getDate() || t.time <= lim));
   }
-  const overdueList = () => S.tasks.filter(isOverdue).sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
+  const overdueList = () => [...S.tasks.filter((t) => !t.repeat && isOverdue(t)), ...tasksOn(keyOf()).filter((t) => t.occ && isOverdue(t))]
+    .sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
+  const top3Keys = (k = keyOf()) => { const have = new Set(tasksOn(k).map(tkey)); return (S.top3[k] || []).filter((x) => have.has(x)); };
 
   // ---------- Theme ----------
   function applyTheme() {
@@ -170,12 +202,39 @@
 
   // ---------- Toast ----------
   let toastT;
-  function toast(msg) {
+  function toast(msg, action) {
     const el = $('#toast');
     el.textContent = msg;
+    el.classList.toggle('has-act', !!action);
+    if (action) {
+      const b = document.createElement('button');
+      b.className = 'toast-act'; b.textContent = action.label || 'Hoàn tác';
+      b.onclick = () => { el.classList.remove('show'); clearTimeout(toastT); action.fn(); };
+      el.append(b);
+    }
     el.classList.add('show');
     clearTimeout(toastT);
-    toastT = setTimeout(() => el.classList.remove('show'), 2200);
+    toastT = setTimeout(() => el.classList.remove('show'), action ? 5000 : 2200);
+  }
+  function celebrate(msg) {
+    toast(msg);
+    navigator.vibrate && navigator.vibrate([20, 40, 20]);
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const box = document.createElement('div');
+    box.className = 'confetti';
+    const colors = ['#18a957', '#4ed37e', '#f3d062', '#ff8a6b', '#3a86b8', '#d6303a'];
+    for (let i = 0; i < 70; i++) {
+      const p = document.createElement('i');
+      p.style.left = Math.random() * 100 + '%';
+      p.style.background = colors[i % colors.length];
+      p.style.animationDelay = Math.random() * 0.5 + 's';
+      p.style.animationDuration = 1.8 + Math.random() * 1.4 + 's';
+      p.style.setProperty('--dx', Math.random() * 220 - 110 + 'px');
+      p.style.setProperty('--r', Math.random() * 900 + 'deg');
+      box.append(p);
+    }
+    document.body.append(box);
+    setTimeout(() => box.remove(), 3600);
   }
 
   // ---------- Components ----------
@@ -187,14 +246,23 @@
   function taskHTML(t, showDate) {
     const c = CATS[t.cat] || CATS.personal;
     const when = showDate || t.date !== keyOf() ? `${dayLabel(t.date)}, ${fmtTime(t.time)}` : `Hôm nay, ${fmtTime(t.time)}`;
-    return `<div class="task glass ${t.done ? 'done' : ''} ${isOverdue(t) ? 'overdue' : ''}" data-id="${t.id}">
+    const subs = t.subs || [], sd = subDone(t), nd = subs.filter((x) => sd.includes(x.id)).length;
+    const open = ui.open[tkey(t)];
+    const isTop = t.date === keyOf() && (S.top3[keyOf()] || []).includes(tkey(t));
+    const tags = [
+      t.repeat ? `<span class="tag">${ic('repeat')}${t.repeat === 'days' ? (t.days || []).slice().sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map((d) => WD[d]).join(' ') : REPEATS[t.repeat]}</span>` : '',
+      subs.length ? `<button class="tag tag-btn ${nd === subs.length ? 'ok' : ''}" data-act="subs" aria-expanded="${!!open}">${ic('list')}${nd}/${subs.length}</button>` : '',
+    ].join('');
+    return `<div class="swipe"><div class="swipe-bg" aria-hidden="true"><span class="sb-l">${ic('check', 'stroke-width="3"')} ${t.done ? 'Bỏ xong' : 'Xong'}</span><span class="sb-r">${t.repeat ? 'Bỏ qua' : 'Xóa'} ${ic('trash')}</span></div>
+    <div class="task glass ${t.done ? 'done' : ''} ${isOverdue(t) ? 'overdue' : ''}" data-id="${t.id}"${t.occ ? ` data-occ="${t.occ}"` : ''}>
       <button class="check" data-act="toggle" aria-label="${t.done ? 'Bỏ đánh dấu' : 'Đánh dấu hoàn thành'}: ${esc(t.title)}">${ic('check', 'stroke-width="3"')}</button>
       <div class="task-body" data-act="edit">
-        <div class="task-title">${esc(t.title)}</div>
-        <div class="task-meta"><span class="cat-dot" style="--c:${c.color}"></span><span class="when">${when}</span></div>
+        <div class="task-title">${isTop ? `<span class="star">${ic('star')}</span>` : ''}${esc(t.title)}</div>
+        <div class="task-meta"><span class="cat-dot" style="--c:${c.color}"></span><span class="when">${when}</span>${tags}</div>
       </div>
       <button class="more" data-act="menu" aria-label="Tùy chọn">${ic('dots', 'fill="currentColor" stroke="none"')}</button>
-    </div>`;
+      ${subs.length && open ? `<div class="subs-list">${subs.map((x) => `<button class="sub ${sd.includes(x.id) ? 'on' : ''}" data-act="sub" data-sid="${x.id}"><span class="sub-c">${ic('check', 'stroke-width="3.2"')}</span>${esc(x.title)}</button>`).join('')}</div>` : ''}
+    </div></div>`;
   }
 
   function greeting() {
@@ -453,7 +521,14 @@
       else { title = 'Sẵn sàng chưa?'; sub = `Hôm nay có ${total} việc đang chờ bạn.`; }
     }
 
-    const shown = list.slice(0, 5);
+    const topKeys = top3Keys();
+    const topTasks = topKeys.map((key) => list.find((t) => tkey(t) === key)).filter(Boolean);
+    const rest = list.filter((t) => !topKeys.includes(tkey(t)));
+    const od = S.tasks.filter((t) => !t.repeat && !t.done && t.date < today).sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
+    const undone = list.filter((t) => !t.done).length;
+    const hr = new Date().getHours();
+    const jt = S.journal[today] || {};
+    const w = waterOn(today);
     return `
       <div class="topbar">
         <button class="icon-btn glass" data-act="search" aria-label="Tìm kiếm">${ic('search')}</button>
@@ -506,16 +581,82 @@
         </div>
       </button>
 
+      <section class="daily">
+        <div class="water glass">
+          <span class="w-ic">${ic('drop')}</span>
+          <div class="w-body">
+            <div class="w-top"><b>${w}</b><span>/ ${S.waterGoal} ly nước</span>${w >= S.waterGoal ? '<em>Đủ rồi 💧</em>' : ''}</div>
+            <div class="cups">${Array.from({ length: Math.max(S.waterGoal, w) }, (_, i) => `<i class="${i < w ? 'on' : ''}"></i>`).join('')}</div>
+          </div>
+          <button class="w-btn ghost" data-act="water-minus" aria-label="Bớt 1 ly">${ic('minus', 'stroke-width="2.6"')}</button>
+          <button class="w-btn" data-act="water-plus" aria-label="Thêm 1 ly">${ic('plus', 'stroke-width="2.6"')}</button>
+        </div>
+        <div class="mood glass">
+          <div class="mood-h"><span>Hôm nay bạn thấy thế nào?</span><button class="link" data-act="go-journal">${ic('journal')} Nhật ký</button></div>
+          <div class="moods">${MOODS.map((m, i) => `<button class="${jt.mood === i + 1 ? 'on' : ''}" data-act="mood" data-v="${i + 1}" aria-label="${m.l}" title="${m.l}">${m.e}</button>`).join('')}</div>
+          ${jt.mood ? `<button class="mood-note" data-act="review">${jt.note ? `“${esc(jt.note)}”` : `${ic('edit')} Viết một dòng cho hôm nay…`}</button>` : ''}
+        </div>
+      </section>
+
       ${readCardHTML()}
+
+      ${hr >= 18 && !jt.reviewed ? `<button class="prompt glass" data-act="review"><span class="pi night">${ic('moon')}</span><span class="pt"><b>Tổng kết ngày</b><span>3 câu hỏi ngắn để nhìn lại hôm nay</span></span>${ic('chevR')}</button>` : ''}
+
+      ${topTasks.length ? `<div class="section-head"><h3 class="h-ic"><span class="star">${ic('star')}</span>Top 3 hôm nay</h3><button class="link" data-act="pick-top3">Chỉnh sửa</button></div>
+      <div class="tasks top3">${topTasks.map((t) => taskHTML(t)).join('')}</div>`
+      : undone >= 2 ? `<button class="prompt glass" data-act="pick-top3"><span class="pi">${ic('star')}</span><span class="pt"><b>Chọn Top 3 hôm nay</b><span>3 việc quan trọng nhất cần làm trước</span></span>${ic('chevR')}</button>` : ''}
 
       <div class="section-head">
         <h3>Việc của tôi</h3>
-        <button class="link" data-act="see-all">Xem tất cả ${ic('chevR')}</button>
+        <button class="link" data-act="see-all">Xem lịch ${ic('chevR')}</button>
       </div>
-      <div class="tasks">
-        ${shown.length ? shown.map((t) => taskHTML(t)).join('') : emptyHTML('Hôm nay chưa có việc nào', 'Thêm việc')}
-        ${list.length > shown.length ? `<button class="link" style="align-self:center;margin-top:4px" data-act="see-all">+${list.length - shown.length} việc khác</button>` : ''}
-      </div>`;
+      ${list.length || od.length ? groupedHTML(rest, od) : emptyHTML('Hôm nay chưa có việc nào', 'Thêm việc')}`;
+  }
+
+  function groupedHTML(list, od) {
+    const g = { am: [], pm: [], eve: [], any: [], done: [] };
+    list.forEach((t) => {
+      if (t.done) g.done.push(t);
+      else if (!t.time) g.any.push(t);
+      else if (t.time < '12:00') g.am.push(t);
+      else if (t.time < '18:00') g.pm.push(t);
+      else g.eve.push(t);
+    });
+    const sec = (cls, title, items, showDate) => items.length
+      ? `<div class="group ${cls}"><div class="group-h">${title}<span>${items.length}</span></div><div class="tasks">${items.map((t) => taskHTML(t, showDate)).join('')}</div></div>` : '';
+    return sec('od', `${ic('alert')} Quá hạn`, od, true)
+      + sec('', `${ic('sun')} Buổi sáng`, g.am) + sec('', `${ic('clock')} Buổi chiều`, g.pm)
+      + sec('', `${ic('moon')} Buổi tối`, g.eve) + sec('', `${ic('list')} Trong ngày`, g.any)
+      + (g.done.length ? `<div class="group done-g"><button class="group-h" data-act="show-done" aria-expanded="${ui.showDone}">${ic('check')} Đã xong<span>${g.done.length}</span><i class="chev ${ui.showDone ? 'up' : ''}">${ic('chevR')}</i></button>
+        ${ui.showDone ? `<div class="tasks">${g.done.map((t) => taskHTML(t)).join('')}</div>` : ''}</div>` : '');
+  }
+
+  const subHead = (title, sub) => `<div class="sub-head"><button class="icon-btn glass" data-act="go-back" aria-label="Quay lại">${ic('chevL')}</button>
+    <div><h1 class="page-title">${title}</h1>${sub ? `<p class="page-sub">${sub}</p>` : ''}</div></div>`;
+
+  function viewJournal() {
+    const today = keyOf();
+    const days = Array.from({ length: 35 }, (_, i) => addDays(mondayOf(today), i - 28));
+    const moods = days.map((k) => (S.journal[k] || {}).mood || 0);
+    const rated = days.filter((k) => k <= today).map((k) => (S.journal[k] || {}).mood).filter(Boolean);
+    const avg = rated.length ? rated.reduce((a, b) => a + b, 0) / rated.length : 0;
+    const entries = Object.keys(S.journal).filter((k) => { const j = S.journal[k]; return j.mood || j.note || j.good || j.better || j.tomorrow; }).sort().reverse();
+    const qa = (q, a) => (a ? `<div class="qa"><span>${q}</span><p>${esc(a)}</p></div>` : '');
+    return `${subHead('Nhật ký', 'Tâm trạng và những dòng ghi chép mỗi ngày.')}
+      <div class="card glass">
+        <div class="card-head"><h4>Tâm trạng 5 tuần qua</h4><span>${rated.length ? `Trung bình ${MOODS[Math.round(avg) - 1].e} ${MOODS[Math.round(avg) - 1].l}` : 'Chưa có dữ liệu'}</span></div>
+        <div class="mood-grid">${['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'].map((d) => `<b>${d}</b>`).join('')}
+          ${days.map((k, i) => `<span class="md ${k === today ? 'today' : ''} ${k > today ? 'future' : ''}" title="${dayLabel(k)}">${moods[i] ? MOODS[moods[i] - 1].e : dateOf(k).getDate()}</span>`).join('')}</div>
+      </div>
+      <button class="btn btn-primary btn-block" data-act="review" style="margin-bottom:22px">${ic('moon')} ${S.journal[today] && S.journal[today].reviewed ? 'Sửa tổng kết hôm nay' : 'Tổng kết hôm nay'}</button>
+      ${entries.length ? entries.map((k) => {
+        const j = S.journal[k];
+        return `<button class="entry glass" data-act="review" data-day="${k}">
+          <div class="entry-h"><span class="entry-m">${j.mood ? MOODS[j.mood - 1].e : '📝'}</span><b>${dayLabel(k)}</b><span>${pad(dateOf(k).getDate())}/${pad(dateOf(k).getMonth() + 1)}/${dateOf(k).getFullYear()}</span></div>
+          ${j.note ? `<p class="entry-note">“${esc(j.note)}”</p>` : ''}
+          ${qa('Làm tốt', j.good)}${qa('Cần tốt hơn', j.better)}${qa('Ưu tiên ngày mai', j.tomorrow)}
+        </button>`;
+      }).join('') : `<div class="empty glass"><div class="big">📓</div>Chưa có trang nhật ký nào.<br>Chọn tâm trạng ở trang chủ để bắt đầu.</div>`}`;
   }
 
   const pageHead = (title, sub) => `<div class="page-head"><div><h1 class="page-title">${title}</h1><p class="page-sub">${sub}</p></div>
@@ -528,7 +669,7 @@
     const days = Array.from({ length: 7 }, (_, i) => addDays(mon, i));
     const today = keyOf();
     const mid = dateOf(days[3]);
-    const list = tasksOn(ui.calSel);
+    const list = tasksOn(ui.calSel).sort(byDoneTime);
     const doneN = list.filter((t) => t.done).length;
     return `
       ${pageHead('Lịch', 'Sắp xếp kế hoạch theo từng ngày.')}
@@ -561,10 +702,11 @@
     const doneArr = days.map(doneOn);
     const focusArr = days.map((k) => Math.round((focusOn(k) + (k === today ? runningElapsed() : 0)) / 60));
     const readArr = days.map((k) => Math.round(readOn(k) / 60));
-    const planned = S.tasks.filter((t) => days.includes(t.date));
+    const planned = days.flatMap(tasksOn);
     const rate = planned.length ? Math.round((planned.filter((t) => t.done).length / planned.length) * 100) : 0;
     const focusTot = fmtDur(focusArr.reduce((a, b) => a + b, 0) * 60);
-    const totalDone = S.tasks.filter((t) => t.done).length;
+    const totalDone = S.tasks.reduce((n, t) => n + (t.repeat ? Object.keys(t.doneDates || {}).length : t.done ? 1 : 0), 0);
+    const last30 = Array.from({ length: 30 }, (_, i) => addDays(today, i - 29)).flatMap(tasksOn);
 
     const barChart = (arr, cls, unit) => {
       const max = Math.max(...arr, 1);
@@ -575,9 +717,10 @@
     };
 
     const catRows = Object.entries(CATS).map(([id, c]) => {
-      const all = S.tasks.filter((t) => t.cat === id);
+      const all = last30.filter((t) => t.cat === id);
       const d = all.filter((t) => t.done).length;
       const p = all.length ? Math.round((d / all.length) * 100) : 0;
+      if (!all.length) return '';
       return `<div class="cat-row"><span class="name"><span class="cat-dot" style="--c:${c.color}"></span>${c.name}</span>
         <div class="bar" style="--c:${c.color}"><i data-w="${p}"></i></div><span class="pct">${d}/${all.length}</span></div>`;
     }).join('');
@@ -593,7 +736,7 @@
       <div class="card glass"><div class="card-head"><h4>Việc hoàn thành</h4><span>${doneArr.reduce((a, b) => a + b, 0)} việc</span></div>${barChart(doneArr, '', '')}</div>
       <div class="card glass"><div class="card-head"><h4>Phút tập trung</h4><span>${focusArr.reduce((a, b) => a + b, 0)} phút</span></div>${barChart(focusArr, 'gold', '')}</div>
       <div class="card glass"><div class="card-head"><h4>Phút đọc sách</h4><span>${readArr.reduce((a, b) => a + b, 0)} phút · mục tiêu ${S.readGoal}/ngày</span></div>${barChart(readArr, 'blue', '')}</div>
-      <div class="card glass"><div class="card-head"><h4>Theo danh mục</h4><span>Tất cả thời gian</span></div>${catRows}</div>
+      <div class="card glass"><div class="card-head"><h4>Theo danh mục</h4><span>30 ngày qua</span></div>${catRows || '<p class="page-sub" style="margin:0">Chưa có dữ liệu.</p>'}</div>
       <button class="btn btn-primary btn-block" data-act="focus">${ic('play')} Bắt đầu phiên tập trung</button>`;
   }
 
@@ -658,6 +801,8 @@
         <button class="menu-item" data-act="avatar"><span class="mi">${ic('smile')}</span><span class="grow">Ảnh đại diện</span><span class="chev">${ic('chevR')}</span></button>
         <button class="menu-item" data-act="theme"><span class="mi">${ic('moon')}</span><span class="grow">Giao diện</span><span class="hint">${themeLbl}</span></button>
         <button class="menu-item" data-act="preset"><span class="mi">${ic('clock')}</span><span class="grow">Thời lượng tập trung</span><span class="hint">${S.focusPreset} phút</span></button>
+        <button class="menu-item" data-act="water-goal"><span class="mi">${ic('drop')}</span><span class="grow">Mục tiêu uống nước</span><span class="hint">${S.waterGoal} ly</span></button>
+        <button class="menu-item" data-act="go-journal"><span class="mi">${ic('journal')}</span><span class="grow">Nhật ký tâm trạng</span><span class="chev">${ic('chevR')}</span></button>
         <button class="menu-item" data-act="read-goal"><span class="mi">${ic('book')}</span><span class="grow">Mục tiêu đọc mỗi ngày</span><span class="hint">${S.readGoal} phút</span></button>
       </div>
       <div class="list glass">
@@ -669,13 +814,19 @@
       <p class="footnote">Dữ liệu được lưu riêng trên thiết bị này.</p>`;
   }
 
-  const VIEWS = { home: viewHome, calendar: viewCalendar, read: viewRead, analytics: viewAnalytics, profile: viewProfile };
+  const VIEWS = { home: viewHome, calendar: viewCalendar, read: viewRead, analytics: viewAnalytics, profile: viewProfile, journal: viewJournal };
+  const MAIN_TABS = ['home', 'calendar', 'read', 'analytics'];
 
   function render(animate = false) {
     const v = $('#view');
     v.innerHTML = VIEWS[ui.tab]();
     if (animate) { v.style.animation = 'none'; void v.offsetWidth; v.style.animation = ''; }
-    requestAnimationFrame(() => $$('[data-w]', v).forEach((el) => (el.style.width = el.dataset.w + '%')));
+    const bars = $$('[data-w]', v);
+    if (animate) {
+      bars.forEach((el) => { el.style.width = '0'; });
+      void v.offsetWidth;
+      requestAnimationFrame(() => bars.forEach((el) => { el.style.width = el.dataset.w + '%'; }));
+    } else bars.forEach((el) => { el.style.transition = 'none'; el.style.width = el.dataset.w + '%'; });
     $$('.tab').forEach((b) => {
       b.classList.toggle('active', b.dataset.tab === ui.tab);
       b.setAttribute('aria-current', b.dataset.tab === ui.tab ? 'page' : 'false');
@@ -684,7 +835,7 @@
 
   function go(tab) {
     if (ui.tab === tab) return;
-    if (tab === 'profile') ui.prevTab = ui.tab;
+    if (!MAIN_TABS.includes(tab) && MAIN_TABS.includes(ui.tab)) ui.prevTab = ui.tab;
     ui.tab = tab;
     render(true);
     window.scrollTo({ top: 0 });
@@ -738,85 +889,248 @@
   document.addEventListener('keydown', (e) => { if (e.key !== 'Escape') return; if ($('.sheet')) closeSheet(); else if (R) closeReader(); });
 
   function taskSheet(existing, presetDate) {
-    const t = existing || { title: '', date: presetDate || (ui.tab === 'calendar' ? ui.calSel : keyOf()), time: '', cat: 'work' };
+    const src = existing && (existing.src || existing);
+    const t = src || { title: '', date: presetDate || (ui.tab === 'calendar' ? ui.calSel : keyOf()), time: '', cat: 'work', repeat: null, days: [], subs: [] };
     const today = keyOf(), tmr = addDays(today, 1);
+    const sat = addDays(today, (6 - new Date().getDay() + 7) % 7);
+    let subs = (t.subs || []).map((x) => ({ ...x }));
+    let repeat = t.repeat || '';
+    let days = (t.days || []).slice();
+    const TIMES = [['', 'Không giờ'], ['07:00', '7:00'], ['12:00', '12:00'], ['18:00', '18:00'], ['21:00', '21:00']];
     openSheet(`
-      <h3>${existing ? 'Sửa công việc' : 'Công việc mới'}</h3>
+      <h3>${src ? 'Sửa công việc' : 'Công việc mới'}</h3>
       <form id="tf" autocomplete="off">
         <label class="field"><span>Tên công việc</span><input class="input" name="title" maxlength="120" placeholder="Ví dụ: Chạy bộ 5km" value="${esc(t.title)}" required></label>
-        <div class="field"><span>Ngày</span>
+        <div class="field"><span>${src && src.repeat ? 'Bắt đầu từ ngày' : 'Ngày'}</span>
           <div class="chips" id="dchips">
             <button type="button" class="chip" data-d="${today}">Hôm nay</button>
             <button type="button" class="chip" data-d="${tmr}">Ngày mai</button>
+            ${sat !== today && sat !== tmr ? `<button type="button" class="chip" data-d="${sat}">Thứ 7 này</button>` : ''}
           </div>
         </div>
         <div class="row">
           <label class="field"><span>Chọn ngày</span><input class="input" type="date" name="date" value="${t.date}" required></label>
           <label class="field"><span>Giờ</span><input class="input" type="time" name="time" value="${t.time || ''}"></label>
         </div>
+        <div class="field" style="margin-top:-6px"><div class="chips sm" id="tchips">${TIMES.map(([v, l]) => `<button type="button" class="chip" data-t="${v}">${l}</button>`).join('')}</div></div>
+        <div class="field"><span>Lặp lại</span>
+          <div class="chips sm" id="rchips"><button type="button" class="chip" data-r="">Không</button>${Object.entries(REPEATS).map(([v, l]) => `<button type="button" class="chip" data-r="${v}">${l}</button>`).join('')}</div>
+          <div class="chips sm wd" id="wchips" hidden>${[1, 2, 3, 4, 5, 6, 0].map((d) => `<button type="button" class="chip" data-w="${d}">${WD[d]}</button>`).join('')}</div>
+        </div>
         <div class="field"><span>Danh mục</span>
           <div class="chips" id="cchips">${Object.entries(CATS).map(([id, c]) => `<button type="button" class="chip ${t.cat === id ? 'on' : ''}" data-c="${id}"><span class="cat-dot" style="--c:${c.color}"></span>${c.name}</button>`).join('')}</div>
         </div>
-        <div class="sheet-actions"><button class="btn btn-primary btn-block" type="submit">${existing ? 'Lưu thay đổi' : `${ic('plus')} Thêm công việc`}</button></div>
+        <div class="field"><span>Các bước nhỏ</span>
+          <div class="sub-edit" id="subs"></div>
+          <div class="sub-add"><input class="input" id="sub-in" maxlength="100" placeholder="Thêm một bước…" enterkeyhint="done"><button type="button" class="btn btn-ghost" id="sub-btn" aria-label="Thêm bước">${ic('plus')}</button></div>
+        </div>
+        ${src && src.repeat ? '<p class="footnote" style="margin:-4px 0 12px">Thay đổi sẽ áp dụng cho mọi lần lặp.</p>' : ''}
+        <div class="sheet-actions"><button class="btn btn-primary btn-block" type="submit">${src ? 'Lưu thay đổi' : `${ic('plus')} Thêm công việc`}</button></div>
       </form>`, (sh) => {
       const f = $('#tf', sh);
       let cat = t.cat;
       const syncD = () => $$('#dchips .chip', sh).forEach((c) => c.classList.toggle('on', c.dataset.d === f.date.value));
-      syncD();
+      const syncT = () => $$('#tchips .chip', sh).forEach((c) => c.classList.toggle('on', c.dataset.t === f.time.value));
+      const syncR = () => {
+        $$('#rchips .chip', sh).forEach((c) => c.classList.toggle('on', c.dataset.r === repeat));
+        $('#wchips', sh).hidden = repeat !== 'days';
+        $$('#wchips .chip', sh).forEach((c) => c.classList.toggle('on', days.includes(+c.dataset.w)));
+      };
+      const drawSubs = () => {
+        $('#subs', sh).innerHTML = subs.map((x, i) => `<div class="sub-row"><span>${esc(x.title)}</span><button type="button" data-i="${i}" aria-label="Xóa bước">${ic('x')}</button></div>`).join('');
+      };
+      const addSub = () => {
+        const v = $('#sub-in', sh).value.trim(); if (!v) return;
+        subs.push({ id: uid(), title: v, done: false }); $('#sub-in', sh).value = ''; drawSubs(); $('#sub-in', sh).focus();
+      };
+      syncD(); syncT(); syncR(); drawSubs();
       f.date.addEventListener('change', syncD);
+      f.time.addEventListener('input', syncT);
       $('#dchips', sh).addEventListener('click', (e) => { const c = e.target.closest('.chip'); if (c) { f.date.value = c.dataset.d; syncD(); } });
+      $('#tchips', sh).addEventListener('click', (e) => { const c = e.target.closest('.chip'); if (c) { f.time.value = c.dataset.t; syncT(); } });
+      $('#rchips', sh).addEventListener('click', (e) => {
+        const c = e.target.closest('.chip'); if (!c) return;
+        repeat = c.dataset.r;
+        if (repeat === 'days' && !days.length) days = [dateOf(f.date.value || today).getDay()];
+        syncR();
+      });
+      $('#wchips', sh).addEventListener('click', (e) => {
+        const c = e.target.closest('.chip'); if (!c) return;
+        const d = +c.dataset.w; days = days.includes(d) ? days.filter((x) => x !== d) : [...days, d]; syncR();
+      });
       $('#cchips', sh).addEventListener('click', (e) => {
         const c = e.target.closest('.chip'); if (!c) return;
         cat = c.dataset.c; $$('#cchips .chip', sh).forEach((x) => x.classList.toggle('on', x === c));
       });
-      if (!existing) setTimeout(() => f.title.focus(), 320);
+      $('#sub-btn', sh).addEventListener('click', addSub);
+      $('#sub-in', sh).addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addSub(); } });
+      $('#subs', sh).addEventListener('click', (e) => { const b = e.target.closest('[data-i]'); if (b) { subs.splice(+b.dataset.i, 1); drawSubs(); } });
+      if (!src) setTimeout(() => f.title.focus(), 320);
       f.addEventListener('submit', (e) => {
         e.preventDefault();
         const title = f.title.value.trim();
         if (!title) return;
-        if (existing) Object.assign(existing, { title, date: f.date.value, time: f.time.value, cat });
-        else S.tasks.push({ id: uid(), title, date: f.date.value, time: f.time.value, cat, done: false });
+        if ($('#sub-in', sh).value.trim()) addSub();
+        if (repeat === 'days' && !days.length) { toast('Hãy chọn ít nhất một thứ trong tuần'); return; }
+        const data = { title, date: f.date.value, time: f.time.value, cat, repeat: repeat || null, days: repeat === 'days' ? days : [], subs };
+        if (src) {
+          if (src.repeat && !data.repeat) { // bỏ lặp: giữ lại thành việc đơn của lần đang xem
+            const k = (existing && existing.occ) || keyOf();
+            Object.assign(src, data, { date: k, done: !!(src.doneDates && src.doneDates[k]), doneAt: (src.doneDates && src.doneDates[k]) || null });
+            delete src.doneDates; delete src.skip; delete src.subDone;
+          } else Object.assign(src, data);
+        } else S.tasks.push({ id: uid(), ...data, done: false });
         save(); closeSheet(); render();
-        toast(existing ? 'Đã lưu thay đổi' : `Đã thêm vào ${dayLabel(f.date.value).toLowerCase()}`);
+        toast(src ? 'Đã lưu thay đổi' : data.repeat ? `Đã thêm việc lặp lại · ${data.repeat === 'days' ? days.map((d) => WD[d]).join(', ') : REPEATS[data.repeat]}` : `Đã thêm vào ${dayLabel(f.date.value).toLowerCase()}`);
       });
     });
   }
 
+  function removeTask(t, occ) {
+    const src = t.src || t;
+    if (src.repeat && occ) {
+      src.skip = src.skip || {}; src.skip[occ] = 1; save(); render();
+      toast('Đã bỏ qua lần này', { fn: () => { delete src.skip[occ]; save(); render(); } });
+      return;
+    }
+    const idx = S.tasks.indexOf(src);
+    if (idx < 0) return;
+    S.tasks.splice(idx, 1); save(); render();
+    toast(src.repeat ? 'Đã xóa cả chuỗi lặp lại' : 'Đã xóa công việc', { fn: () => { S.tasks.splice(idx, 0, src); save(); render(); } });
+  }
+
   function taskMenu(t) {
+    const src = t.src || t;
+    const isToday = t.date === keyOf();
+    const inTop = isToday && (S.top3[keyOf()] || []).includes(tkey(t));
     openSheet(`
       <h3>${esc(t.title)}</h3>
       <button class="menu-item" data-m="edit"><span class="mi">${ic('edit')}</span>Chỉnh sửa</button>
       <button class="menu-item" data-m="toggle"><span class="mi">${ic('check')}</span>${t.done ? 'Đánh dấu chưa xong' : 'Đánh dấu hoàn thành'}</button>
-      <button class="menu-item" data-m="tmr"><span class="mi">${ic('arrowR')}</span>Dời sang ngày mai</button>
-      <button class="menu-item danger" data-m="del"><span class="mi">${ic('trash')}</span>Xóa công việc</button>`, (sh) => {
+      ${isToday && !t.done ? `<button class="menu-item" data-m="top"><span class="mi">${ic('star')}</span>${inTop ? 'Bỏ khỏi Top 3 hôm nay' : 'Đưa vào Top 3 hôm nay'}</button>` : ''}
+      ${src.repeat
+        ? `<button class="menu-item" data-m="skip"><span class="mi">${ic('arrowR')}</span>Bỏ qua lần này</button>
+           <button class="menu-item danger" data-m="del"><span class="mi">${ic('trash')}</span>Xóa cả chuỗi lặp lại</button>`
+        : `<button class="menu-item" data-m="tmr"><span class="mi">${ic('arrowR')}</span>Dời sang ngày mai</button>
+           <button class="menu-item danger" data-m="del"><span class="mi">${ic('trash')}</span>Xóa công việc</button>`}`, (sh) => {
       sh.addEventListener('click', (e) => {
         const b = e.target.closest('[data-m]'); if (!b) return;
         const m = b.dataset.m;
         if (m === 'edit') { taskSheet(t); return; }
-        if (m === 'toggle') { closeSheet(); toggleTask(t.id); return; }
-        if (m === 'tmr') { t.date = addDays(t.date < keyOf() ? keyOf() : t.date, 1); save(); toast('Đã dời sang ' + dayLabel(t.date).toLowerCase()); }
-        if (m === 'del') {
-          const idx = S.tasks.indexOf(t);
-          S.tasks.splice(idx, 1); save();
-          toast('Đã xóa công việc');
+        closeSheet();
+        if (m === 'toggle') { toggleTask(t.id, t.occ); return; }
+        if (m === 'top') { toggleTop3(t); render(); return; }
+        if (m === 'skip') { removeTask(t, t.occ || keyOf()); return; }
+        if (m === 'del') { removeTask(t); return; }
+        if (m === 'tmr') {
+          const prev = src.date;
+          src.date = addDays(src.date < keyOf() ? keyOf() : src.date, 1); save(); render();
+          toast('Đã dời sang ' + dayLabel(src.date).toLowerCase(), { fn: () => { src.date = prev; save(); render(); } });
         }
-        closeSheet(); render();
       });
     });
   }
 
-  function toggleTask(id) {
-    const t = S.tasks.find((x) => x.id === id); if (!t) return;
-    const wasAllDone = tasksOn(keyOf()).every((x) => x.done);
-    t.done = !t.done;
-    t.doneAt = t.done ? Date.now() : null;
+  function toggleTop3(t) {
+    const k = keyOf(), a = top3Keys(k), key = tkey(t);
+    if (a.includes(key)) S.top3[k] = a.filter((x) => x !== key);
+    else if (a.length >= 3) { toast('Top 3 đã đủ. Hãy bỏ bớt một việc trước nhé'); return false; }
+    else S.top3[k] = [...a, key];
     save();
-    if (t.done && navigator.vibrate) navigator.vibrate(12);
+    return true;
+  }
+
+  function top3Sheet() {
+    const list = tasksOn(keyOf()).filter((t) => !t.done);
+    const draw = () => list.map((t) => {
+      const on = top3Keys().includes(tkey(t));
+      return `<button class="pick ${on ? 'on' : ''}" data-k="${tkey(t)}"><span class="pick-s">${ic('star')}</span><span><b>${esc(t.title)}</b><span>${fmtTime(t.time)}</span></span></button>`;
+    }).join('');
+    openSheet(`<h3>Top 3 hôm nay</h3><p class="page-sub" style="margin-top:-10px">Chọn tối đa 3 việc quan trọng nhất. Làm chúng trước tiên.</p>
+      <div class="picks" id="picks">${draw()}</div>
+      <button class="btn btn-primary btn-block" data-done style="margin-top:14px">Xong</button>`, (sh) => {
+      sh.addEventListener('click', (e) => {
+        if (e.target.closest('[data-done]')) { closeSheet(); render(); return; }
+        const b = e.target.closest('.pick'); if (!b) return;
+        const t = list.find((x) => tkey(x) === b.dataset.k);
+        if (toggleTop3(t)) $('#picks', sh).innerHTML = draw();
+      });
+    }, () => setTimeout(render, 0));
+  }
+
+  function reviewSheet(k = keyOf()) {
+    const j = S.journal[k] || {};
+    const isToday = k === keyOf();
+    openSheet(`
+      <h3>${isToday ? 'Tổng kết hôm nay' : `Nhật ký · ${dayLabel(k)}`}</h3>
+      <div class="field"><span>Tâm trạng</span><div class="moods big" id="jm">${MOODS.map((m, i) => `<button type="button" class="${j.mood === i + 1 ? 'on' : ''}" data-v="${i + 1}" aria-label="${m.l}"><em>${m.e}</em><small>${m.l}</small></button>`).join('')}</div></div>
+      <form id="jf" autocomplete="off">
+        <label class="field"><span>Một dòng cho ${isToday ? 'hôm nay' : 'ngày này'}</span><input class="input" name="note" maxlength="160" value="${esc(j.note || '')}" placeholder="Điều đáng nhớ nhất…"></label>
+        <label class="field"><span>Mình đã làm tốt điều gì?</span><textarea class="input" name="good" rows="2">${esc(j.good || '')}</textarea></label>
+        <label class="field"><span>Điều gì có thể làm tốt hơn?</span><textarea class="input" name="better" rows="2">${esc(j.better || '')}</textarea></label>
+        <label class="field"><span>Ngày mai, việc quan trọng nhất là gì?</span><input class="input" name="tomorrow" maxlength="120" value="${esc(j.tomorrow || '')}"></label>
+        ${isToday && !j.tomorrowTask ? '<label class="check-row"><input type="checkbox" name="addtask" checked> Thêm việc này vào Top 3 ngày mai</label>' : ''}
+        <button class="btn btn-primary btn-block" type="submit">Lưu nhật ký</button>
+      </form>`, (sh) => {
+      let mood = j.mood || 0;
+      $('#jm', sh).addEventListener('click', (e) => {
+        const b = e.target.closest('button'); if (!b) return;
+        mood = +b.dataset.v; $$('#jm button', sh).forEach((x) => x.classList.toggle('on', x === b));
+      });
+      $('#jf', sh).addEventListener('submit', (e) => {
+        e.preventDefault();
+        const f = e.target, v = (n) => f[n].value.trim();
+        const e2 = { ...j, mood: mood || undefined, note: v('note'), good: v('good'), better: v('better'), tomorrow: v('tomorrow') };
+        e2.reviewed = !!(e2.good || e2.better || e2.tomorrow) || !!j.reviewed;
+        if (f.addtask && f.addtask.checked && e2.tomorrow) {
+          const tmr = addDays(k, 1), id = uid();
+          S.tasks.push({ id, title: e2.tomorrow, date: tmr, time: '', cat: 'work', done: false, subs: [] });
+          S.top3[tmr] = [...(S.top3[tmr] || []), id].slice(0, 3);
+          e2.tomorrowTask = id;
+        }
+        S.journal[k] = e2; save(); closeSheet(); render();
+        toast(e2.tomorrowTask && !j.tomorrowTask ? 'Đã lưu nhật ký · đã thêm việc vào Top 3 ngày mai' : 'Đã lưu nhật ký 🌙');
+      });
+    });
+  }
+
+  function toggleTask(id, occ) {
+    const t = S.tasks.find((x) => x.id === id); if (!t) return;
+    const today = keyOf();
+    const wasAllDone = tasksOn(today).every((x) => x.done);
+    let nowDone;
+    if (t.repeat) {
+      const k = occ || today;
+      t.doneDates = t.doneDates || {};
+      if (t.doneDates[k]) delete t.doneDates[k]; else t.doneDates[k] = Date.now();
+      nowDone = !!t.doneDates[k];
+    } else {
+      t.done = !t.done; t.doneAt = t.done ? Date.now() : null; nowDone = t.done;
+    }
+    save();
+    if (nowDone && navigator.vibrate) navigator.vibrate(12);
     render();
-    const el = $(`.task[data-id="${id}"]`);
+    const el = $(`.task[data-id="${id}"]${t.repeat ? `[data-occ="${occ || today}"]` : ''}`);
     el && el.classList.add('pop');
-    const list = tasksOn(keyOf());
-    if (t.done && t.date === keyOf() && list.length && list.every((x) => x.done) && !wasAllDone) toast('Xuất sắc! Bạn đã xong mọi việc hôm nay 🎉');
+    const list = tasksOn(today);
+    if (nowDone && list.length && list.every((x) => x.done) && !wasAllDone) celebrate('Xuất sắc! Bạn đã xong mọi việc hôm nay 🎉');
+    return nowDone;
+  }
+
+  function toggleSub(t, sid) {
+    const src = t.src || t;
+    if (src.repeat) {
+      const k = t.occ || keyOf();
+      src.subDone = src.subDone || {};
+      const a = src.subDone[k] || [];
+      src.subDone[k] = a.includes(sid) ? a.filter((x) => x !== sid) : [...a, sid];
+    } else {
+      const x = (src.subs || []).find((y) => y.id === sid); if (x) x.done = !x.done;
+    }
+    save();
+    const fresh = getT(src.id, t.occ);
+    const subs = fresh.subs || [];
+    if (subs.length && subDone(fresh).length === subs.length && !fresh.done) toast('Đã xong mọi bước 👏', { label: 'Hoàn thành việc', fn: () => toggleTask(src.id, t.occ) });
   }
 
   // ---------- Focus timer ----------
@@ -953,8 +1267,9 @@
       out.addEventListener('click', (e) => {
         const el = e.target.closest('.task'); if (!el) return;
         const t = S.tasks.find((x) => x.id === el.dataset.id);
-        if (e.target.closest('[data-act="toggle"]')) { t.done = !t.done; t.doneAt = t.done ? Date.now() : null; save(); run(); render(); return; }
-        ui.calSel = t.date; ui.calWeek = mondayOf(t.date); closeSheet(); ui.tab = ''; go('calendar');
+        if (e.target.closest('[data-act="toggle"]')) { toggleTask(t.id, t.repeat ? keyOf() : undefined); run(); return; }
+        const day = t.repeat ? keyOf() : t.date;
+        ui.calSel = day; ui.calWeek = mondayOf(day); closeSheet(); ui.tab = ''; go('calendar');
       });
     });
   }
@@ -1056,18 +1371,40 @@
     const b = e.target.closest('[data-act]'); if (!b) return;
     const act = b.dataset.act;
     const taskEl = b.closest('.task');
-    const t = taskEl && S.tasks.find((x) => x.id === taskEl.dataset.id);
+    const t = taskEl && getT(taskEl.dataset.id, taskEl.dataset.occ);
+    const today = keyOf();
     switch (act) {
-      case 'toggle': toggleTask(t.id); break;
+      case 'toggle': toggleTask(t.id, t.occ); break;
       case 'edit': taskSheet(t); break;
       case 'menu': taskMenu(t); break;
+      case 'subs': ui.open[tkey(t)] = !ui.open[tkey(t)]; render(); break;
+      case 'sub': toggleSub(t, b.dataset.sid); render(); break;
+      case 'show-done': ui.showDone = !ui.showDone; render(); break;
+      case 'pick-top3': top3Sheet(); break;
+      case 'review': reviewSheet(b.dataset.day || today); break;
+      case 'go-journal': go('journal'); break;
+      case 'mood': {
+        const j = jour(today), v = +b.dataset.v;
+        j.mood = j.mood === v ? undefined : v; save(); render();
+        if (j.mood) toast(`Đã ghi nhận: ${MOODS[v - 1].e} ${MOODS[v - 1].l}`);
+        break;
+      }
+      case 'water-plus': {
+        S.water[today] = waterOn(today) + 1; save(); render();
+        if (S.water[today] === S.waterGoal) celebrate(`Tuyệt! Bạn đã uống đủ ${S.waterGoal} ly nước hôm nay 💧`);
+        break;
+      }
+      case 'water-minus': if (waterOn(today) > 0) { S.water[today]--; save(); render(); } break;
+      case 'water-goal':
+        choiceSheet('Mục tiêu uống nước', [6, 8, 10, 12].map((p) => [p, `${p} ly (~${(p * 0.25).toString().replace('.', ',')} lít)`, 'drop']), S.waterGoal, (v) => { S.waterGoal = +v; save(); });
+        break;
       case 'add': taskSheet(); break;
       case 'search': searchSheet(); break;
       case 'notif': notifSheet(); break;
       case 'focus': focusSheet(); break;
       case 'go-analytics': go('analytics'); break;
       case 'go-profile': go('profile'); break;
-      case 'go-back': go(ui.prevTab && ui.prevTab !== 'profile' ? ui.prevTab : 'home'); break;
+      case 'go-back': go(MAIN_TABS.includes(ui.prevTab) ? ui.prevTab : 'home'); break;
       case 'open-read': openReader(b.dataset.id); break;
       case 'read-cat': ui.readCat = b.dataset.cat; render(); break;
       case 'add-read': addReadSheet(); break;
@@ -1120,9 +1457,115 @@
     if (!$('.sheet') && !R) render();
   });
 
+  // ---------- Vuốt trên việc: phải = xong, trái = xóa / bỏ qua ----------
+  let sw = null, swallowClick = false;
+  $('#view').addEventListener('pointerdown', (e) => {
+    const task = e.target.closest('.swipe > .task');
+    if (!task || e.button > 0 || e.target.closest('input, textarea')) return;
+    sw = { el: task, wrap: task.parentElement, x0: e.clientX, y0: e.clientY, dx: 0, active: false };
+  });
+  window.addEventListener('pointermove', (e) => {
+    if (!sw) return;
+    const dx = e.clientX - sw.x0, dy = e.clientY - sw.y0;
+    if (!sw.active) {
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { sw = null; return; }
+      if (Math.abs(dx) < 12) return;
+      sw.active = true; sw.el.style.transition = 'none'; sw.wrap.classList.add('swiping');
+    }
+    sw.dx = dx;
+    sw.el.style.transform = `translateX(${dx}px)`;
+    sw.wrap.classList.toggle('to-r', dx > 0);
+    sw.wrap.classList.toggle('to-l', dx < 0);
+    const armed = Math.abs(dx) > 90;
+    if (armed !== sw.wrap.classList.contains('armed') && armed && navigator.vibrate) navigator.vibrate(8);
+    sw.wrap.classList.toggle('armed', armed);
+  });
+  const endSwipe = () => {
+    if (!sw) return;
+    const s = sw; sw = null;
+    if (!s.active) return;
+    swallowClick = true; setTimeout(() => (swallowClick = false), 60);
+    s.el.style.transition = '';
+    const id = s.el.dataset.id, occ = s.el.dataset.occ;
+    if (Math.abs(s.dx) > 90) {
+      s.el.style.transform = `translateX(${s.dx > 0 ? 110 : -110}%)`;
+      setTimeout(() => {
+        const t = getT(id, occ);
+        if (!t) return;
+        if (s.dx > 0) {
+          const nowDone = toggleTask(id, occ);
+          toast(nowDone ? 'Đã hoàn thành' : 'Đã bỏ đánh dấu', { fn: () => toggleTask(id, occ) });
+        } else removeTask(t, t.repeat ? occ || keyOf() : undefined);
+      }, 170);
+    } else {
+      s.el.style.transform = '';
+      setTimeout(() => s.wrap.classList.remove('swiping', 'to-l', 'to-r', 'armed'), 200);
+    }
+  };
+  window.addEventListener('pointerup', endSwipe);
+  window.addEventListener('pointercancel', endSwipe);
+  $('#view').addEventListener('click', (e) => { if (swallowClick) { e.stopPropagation(); e.preventDefault(); } }, true);
+
+  // ---------- Màn chào lần đầu ----------
+  function onboarding() {
+    let step = 0;
+    const data = { name: '', avatar: '👮🏻‍♂️', readGoal: 10, waterGoal: 8 };
+    const el = document.createElement('div');
+    el.className = 'onboard';
+    const seg = (id, vals, cur, unit) => `<div class="seg" id="${id}">${vals.map((v) => `<button type="button" data-v="${v}" class="${v === cur ? 'on' : ''}">${v} ${unit}</button>`).join('')}</div>`;
+    const steps = [
+      () => `<div class="ob-hero"><img class="ob-logo" src="icons/icon.svg" alt=""><h1>Chào mừng bạn!</h1>
+        <p>Một nơi gọn gàng để sắp xếp công việc, rèn thói quen tốt và đọc sách mỗi ngày.</p>
+        <ul class="ob-feats"><li><span>${ic('star')}</span>Top 3 việc quan trọng, việc lặp lại, các bước nhỏ</li><li><span>${ic('book')}</span>10 phút đọc sách mỗi ngày</li><li><span>${ic('drop')}</span>Uống nước, tâm trạng và nhật ký</li></ul></div>`,
+      () => `<h2>Bạn tên là gì?</h2><p class="ob-sub">Để app chào bạn mỗi ngày.</p><input class="input" id="ob-name" maxlength="30" placeholder="Tên của bạn" value="${esc(data.name)}" autocomplete="given-name">`,
+      () => `<h2>Chọn ảnh đại diện</h2><p class="ob-sub">Có thể đổi sang ảnh thật trong trang Cá nhân.</p><div class="emoji-grid" id="ob-emo">${EMOJIS.map((e) => `<button type="button" data-e="${e}" class="${data.avatar === e ? 'on' : ''}">${e}</button>`).join('')}</div>`,
+      () => `<h2>Mục tiêu mỗi ngày</h2><p class="ob-sub">Bắt đầu vừa sức. Bạn có thể đổi bất cứ lúc nào.</p>
+        <div class="field"><span>📚 Đọc sách</span>${seg('ob-read', [5, 10, 15, 20], data.readGoal, 'phút')}</div>
+        <div class="field"><span>💧 Uống nước</span>${seg('ob-water', [6, 8, 10], data.waterGoal, 'ly')}</div>`,
+    ];
+    const draw = () => {
+      el.innerHTML = `<div class="ob-wrap">
+        <div class="ob-top">${step ? `<button class="icon-btn glass" data-ob="back" aria-label="Quay lại">${ic('chevL')}</button>` : '<span></span>'}
+          <div class="ob-dots">${steps.map((_, i) => `<i class="${i === step ? 'on' : i < step ? 'past' : ''}"></i>`).join('')}</div><span></span></div>
+        <div class="ob-body" key="${step}">${steps[step]()}</div>
+        <button class="btn btn-primary btn-block" data-ob="next">${step === steps.length - 1 ? 'Bắt đầu sử dụng' : step === 0 ? 'Bắt đầu' : 'Tiếp tục'}</button></div>`;
+      if (step === 1) setTimeout(() => { const i = $('#ob-name', el); i && i.focus(); }, 250);
+    };
+    el.addEventListener('click', (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      const grp = b.closest('#ob-emo, #ob-read, #ob-water');
+      if (grp) {
+        $$('button', grp).forEach((x) => x.classList.toggle('on', x === b));
+        if (grp.id === 'ob-emo') data.avatar = b.dataset.e;
+        if (grp.id === 'ob-read') data.readGoal = +b.dataset.v;
+        if (grp.id === 'ob-water') data.waterGoal = +b.dataset.v;
+        return;
+      }
+      if (b.dataset.ob === 'back') { if (step === 1) data.name = $('#ob-name', el).value.trim(); step--; draw(); return; }
+      if (b.dataset.ob !== 'next') return;
+      if (step === 1) {
+        const v = $('#ob-name', el).value.trim();
+        if (!v) { toast('Nhập tên của bạn nhé'); $('#ob-name', el).focus(); return; }
+        data.name = v;
+      }
+      if (step < steps.length - 1) { step++; draw(); return; }
+      Object.assign(S, { name: data.name, avatar: { type: 'emoji', value: data.avatar }, readGoal: data.readGoal, waterGoal: data.waterGoal, onboarded: true });
+      save();
+      document.body.classList.remove('reading');
+      el.classList.add('closing'); setTimeout(() => el.remove(), 260);
+      render(true);
+      toast(`Chào mừng ${data.name}! Bấm nút + để thêm việc đầu tiên 🎉`);
+    });
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'ob-name') { e.preventDefault(); $('[data-ob=next]', el).click(); } });
+    document.body.append(el);
+    document.body.classList.add('reading');
+    draw();
+  }
+
   // ---------- Boot ----------
   applyTheme();
-  render();
+  render(true);
+  if (!S.onboarded) onboarding();
   if (S.timer && S.timer.endsAt) ensureTick();
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
