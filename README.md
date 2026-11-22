@@ -19,11 +19,7 @@
 - **Lịch âm**: ngày âm trên từng ô lịch, can chi ngày/tháng/năm, lịch tháng, mùng 1 và rằm tới, ngày lễ dương lịch và âm lịch sắp tới (tính theo giờ Việt Nam, thuật toán thiên văn của Hồ Ngọc Đức).
 - **Ngày quan trọng**: sinh nhật, kỷ niệm, ngày giỗ, hạn chót; theo dương lịch hoặc âm lịch, lặp hằng năm, đếm ngược, tự tính số tuổi; hiện trên trang chủ khi còn ≤ 7 ngày.
 - **Thu chi**: ghi khoản chi/thu với nút số tiền nhanh, 10 nhóm chi tiêu, ngân sách tháng có cảnh báo, tổng hợp theo nhóm và theo ngày.
-- **Lịch trực**, hai chế độ:
-  - **Lịch theo tuần** (lịch công bố hằng tuần): khai báo vị trí trực và giờ các ca bằng cách dán đoạn văn bản dạng “Ca 1: Từ 7h30 đến 13h; …”; nhập ca của mình cho từng ngày (chọn nhiều ca một lúc, chép từ tuần trước); ca bắt đầu trước giờ “ngày trực bắt đầu” được tính là rạng sáng hôm sau; đánh dấu đổi ca và đã báo cáo Ban Giám đốc; danh sách việc cần làm trong ca; danh bạ liên hệ khi có sự cố; nhắc nhập lịch vào Chủ nhật; xuất file `.ics` để Lịch điện thoại nhắc trước 30 phút.
-  - **Chu kỳ cố định** (Ngày → Đêm → Nghỉ → Nghỉ, 24/48, hành chính…) tự xoay, đổi ca từng ngày.
-
-  Ca trực hiện trên trang chủ (đang trực / ca tới), trong Lịch và trong thông báo. Dữ liệu lịch trực chỉ lưu trên thiết bị, không có trong mã nguồn.
+- **Lịch trực theo tuần** (lịch công bố mỗi Chủ nhật): có sẵn 2 vị trí “Trực lễ tân, cửa giám sát” (6 ca) và “Trực NOC” (7 ca) cùng giờ từng ca; ngày trực tính từ 7h30. Mỗi tuần chỉ cần chạm vào bảng ngày × ca để đánh dấu ca mình trực. Có tổng số ca, giờ trực, ca đêm; ghi chú, đổi ca và đánh dấu đã báo cáo Ban Giám đốc; việc cần làm trong ca; danh bạ liên hệ; nhắc nhập lịch vào Chủ nhật; xuất file `.ics` để Lịch điện thoại nhắc trước 30 phút. Ca trực hiện trên trang chủ, trong Lịch và thông báo.
 - **Lịch**: xem theo tuần, chấm báo số việc mỗi ngày.
 - **Tập trung (Pomodoro)**: bấm thẻ “Tập trung”, chọn 15/25/45/60 phút; vẫn đếm đúng khi chuyển app, có chuông khi hết giờ.
 - **Đọc mỗi ngày** (tab Đọc sách): 21 bài đọc ngắn tự biên soạn về phát triển bản thân, kỹ năng, kiến thức và đạo đức. Mỗi bài có châm ngôn, ý chính, việc “Thử ngay hôm nay” và ô ghi chú suy ngẫm. Đồng hồ đọc hướng tới mục tiêu 10 phút/ngày (đổi được), tự tạm dừng khi rời app hoặc 90 giây không thao tác. Có chuỗi ngày đọc, châm ngôn mỗi ngày, lưu bài, chỉnh cỡ chữ và thêm bài đọc của riêng bạn.

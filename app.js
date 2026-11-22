@@ -134,15 +134,31 @@
     S.events = Array.isArray(S.events) ? S.events : [];
     S.money = Array.isArray(S.money) ? S.money : [];
     S.budget = S.budget || 0;
-    S.shift = S.shift || { on: false, cycle: ['d', 'n', 'o', 'o'], start: keyOf() };
-    S.shiftOv = S.shiftOv || {};
-    if (!S.shift.mode) S.shift.mode = S.shift.on ? 'cycle' : 'week';
+    S.shift = { on: !S.shift || S.shift.on !== false };
+    delete S.shiftOv;
     S.duty = S.duty || {};
     S.duty.positions = Array.isArray(S.duty.positions) ? S.duty.positions : [];
     S.duty.entries = Array.isArray(S.duty.entries) ? S.duty.entries : [];
     S.duty.contacts = Array.isArray(S.duty.contacts) ? S.duty.contacts : [];
     if (S.duty.remind === undefined) S.duty.remind = true;
     S.duty.dayStart = S.duty.dayStart || '00:00';
+    if (!S.duty.seeded) {
+      // Hai vị trí trực và giờ ca được nhập sẵn
+      const DEF = [
+        { id: 'letan', name: 'Trực lễ tân, cửa giám sát', short: 'Lễ tân · Cửa giám sát', color: '#18a957',
+          shifts: [['07:30', '13:00'], ['13:00', '18:00'], ['18:00', '21:30'], ['21:30', '00:30'], ['00:30', '04:00'], ['04:00', '07:30']] },
+        { id: 'noc', name: 'Trực NOC', short: 'NOC', color: '#0f8a6a',
+          shifts: [['07:30', '11:00'], ['11:00', '14:30'], ['14:30', '18:00'], ['18:00', '21:30'], ['21:30', '00:30'], ['00:30', '04:00'], ['04:00', '07:30']] },
+      ];
+      DEF.forEach((dp) => {
+        const ex = S.duty.positions.find((p) => p.name.toLowerCase() === dp.name.toLowerCase());
+        if (ex) { ex.short = ex.short || dp.short; return; }
+        S.duty.positions.push({ id: dp.id, name: dp.name, short: dp.short, color: dp.color, checklist: [], shifts: dp.shifts.map(([a, b], i) => ({ id: `${dp.id}-c${i + 1}`, name: `Ca ${i + 1}`, start: a, end: b })) });
+      });
+      if (!S.duty.dayStartSet) S.duty.dayStart = '07:30';
+      S.shift.on = true;
+      S.duty.seeded = true;
+    }
     S.letters = Array.isArray(S.letters) ? S.letters : [];
     S.wins = Array.isArray(S.wins) ? S.wins : [];
   }
@@ -536,14 +552,6 @@
   const EV_TYPES = { birthday: ['Sinh nhật', '🎂'], anniv: ['Kỷ niệm', '💍'], memorial: ['Ngày giỗ', '🕯️'], deadline: ['Hạn chót', '📌'], other: ['Sự kiện', '⭐'] };
   const MC_OUT = { food: ['Ăn uống', '🍜'], move: ['Đi lại', '🛵'], shop: ['Mua sắm', '🛍️'], bill: ['Hóa đơn', '💡'], health: ['Sức khỏe', '💊'], fun: ['Giải trí', '🎬'], family: ['Gia đình', '👪'], edu: ['Học tập', '📚'], gift: ['Hiếu hỷ', '🧧'], other: ['Khác', '📦'] };
   const MC_IN = { salary: ['Lương', '💰'], bonus: ['Thưởng', '🎁'], side: ['Thu nhập thêm', '💼'], oin: ['Khác', '💵'] };
-  const SHIFT_TYPES = {
-    d: { name: 'Trực ngày', short: 'N', color: '#e5a50a', time: '07:00–19:00' },
-    n: { name: 'Trực đêm', short: 'Đ', color: '#2f6f5e', time: '19:00–07:00' },
-    f: { name: 'Trực 24h', short: '24', color: '#d6303a', time: '07:00–07:00' },
-    h: { name: 'Hành chính', short: 'HC', color: '#18a957', time: '07:30–17:00' },
-    o: { name: 'Nghỉ', short: 'Nghỉ', color: '#8a9a90', time: '' },
-  };
-  const SHIFT_TPL = [['Ngày → Đêm → Nghỉ → Nghỉ', ['d', 'n', 'o', 'o']], ['Trực 24h, nghỉ 48h', ['f', 'o', 'o']], ['Hành chính T2–T6', ['h', 'h', 'h', 'h', 'h', 'o', 'o']], ['Ngày → Nghỉ', ['d', 'o']]];
   const LN = window.Lunar;
   const daysBetween = (a, b) => Math.round((dateOf(b) - dateOf(a)) / 864e5);
   const fmtDM = (k) => { const d = dateOf(k); return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}`; };
@@ -677,17 +685,6 @@
   const fmtShort = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace(/\.0$/, '').replace('.', ',')}tr` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : `${n}đ`);
   const sumType = (arr, type) => arr.filter((x) => x.type === type).reduce((a, x) => a + x.amt, 0);
 
-  // ----- Lịch trực -----
-  function shiftOn(k) {
-    const sh = S.shift;
-    if (!sh || !sh.on || sh.mode === 'week' || !sh.cycle.length) return null;
-    const ov = S.shiftOv[k];
-    if (ov && SHIFT_TYPES[ov]) return { id: ov, ...SHIFT_TYPES[ov], ov: true };
-    const diff = daysBetween(sh.start, k), n = sh.cycle.length;
-    const id = sh.cycle[((diff % n) + n) % n];
-    return { id, ...SHIFT_TYPES[id] };
-  }
-
   // ----- Lịch trực theo tuần (lịch công bố hằng tuần) -----
   const DUTY_COLORS = ['#18a957', '#0f8a6a', '#5c9e2f', '#14a38b', '#0b6f36', '#e5a50a', '#d6303a'];
   const toMin = (t) => { const [h, m] = String(t || '0:0').split(':').map(Number); return (h || 0) * 60 + (m || 0); };
@@ -705,13 +702,11 @@
   const entriesOn = (k) => S.duty.entries.filter((e) => e.date === k).map(entryInfo).filter(Boolean).sort((a, b) => a.start - b.start);
   const isNight = (x) => { const a = toMin(x.s.start) + (x.nextDay ? 1440 : 0), b = a + shiftDur(x.s); return (a < 300 && b > 0) || (a < 1740 && b > 1440); };
   function dutyOf(k) {
-    if (!S.shift.on) return [];
-    if (S.shift.mode === 'cycle') { const c = shiftOn(k); return c ? [{ label: c.name, short: c.short, color: c.color, time: c.time, off: c.id === 'o', cyc: true, ov: c.ov }] : []; }
-    return entriesOn(k);
+    return S.shift.on ? entriesOn(k) : [];
   }
   const nearDuty = () => { const t = keyOf(); return [addDays(t, -1), t, addDays(t, 1)].flatMap(entriesOn).filter((x) => x.end > Date.now()).sort((a, b) => a.start - b.start); };
   function dutyReminder() {
-    if (!S.shift.on || S.shift.mode !== 'week' || !S.duty.remind || !S.duty.positions.length) return null;
+    if (!S.shift.on || !S.duty.remind || !S.duty.positions.length) return null;
     const today = keyOf(), dow = dateOf(today).getDay(), mon = mondayOf(today);
     const hasWeek = (m) => S.duty.entries.some((e) => e.date >= m && e.date <= addDays(m, 6));
     if (dow === 0 && !hasWeek(addDays(mon, 7))) return { mon: addDays(mon, 7), title: 'Lịch trực tuần tới đã công bố?', sub: `Nhập ca của bạn cho tuần ${fmtDM(addDays(mon, 7))} – ${fmtDM(addDays(mon, 13))}` };
@@ -721,10 +716,6 @@
   function dutyNotes() {
     const out = [];
     if (!S.shift.on) return out;
-    if (S.shift.mode === 'cycle') {
-      if (new Date().getHours() >= 17) { const t = shiftOn(addDays(keyOf(), 1)); if (t && t.id !== 'o') out.push({ badge: t.short, color: t.color, title: `Ngày mai: ${t.name}`, sub: t.time || '' }); }
-      return out;
-    }
     const now = Date.now(), near = nearDuty();
     const cur = near.find((x) => x.start <= now);
     if (cur) out.push({ quiet: true, badge: cur.short, color: cur.color, title: `Đang trực: ${cur.label}`, sub: `${cur.time} · còn ${fmtLeft(cur.end - now)}` });
@@ -739,7 +730,6 @@
   function heroDutyChip() {
     if (!S.shift.on) return '';
     const chip = (c, txt) => `<button class="shift-chip" data-act="go" data-to="shift" style="--c:${c}">${ic('duty')}${txt}</button>`;
-    if (S.shift.mode === 'cycle') { const sf = shiftOn(keyOf()); return sf ? chip(sf.color, `${sf.name}${sf.time ? ` · ${sf.time}` : ''}`) : ''; }
     const now = Date.now(), near = nearDuty();
     const cur = near.find((x) => x.start <= now);
     const nx = near.find((x) => x.start > now && x.start - now < 18 * 3600e3);
@@ -748,7 +738,7 @@
     return chip(x.color, cur ? `Đang trực · ${esc(x.label)} · đến ${x.s.end}` : `Ca tới · ${esc(x.label)} · ${x.s.start} ${keyOf(new Date(x.start)) === keyOf() ? 'hôm nay' : 'ngày mai'}`);
   }
   function dutyNowCard() {
-    if (!S.shift.on || S.shift.mode !== 'week') return '';
+    if (!S.shift.on) return '';
     const now = Date.now(), cur = nearDuty().find((x) => x.start <= now);
     if (!cur || !(cur.p.checklist || []).length) return '';
     const done = cur.e.checks || [];
@@ -1271,7 +1261,7 @@
           <button class="di lu" data-act="go" data-to="lunar">🌙 ${lunarFull(k)}</button>
           ${holidaysOn(k).map((h) => `<span class="di hol">${holiIcon(h.i)}${h.n}</span>`).join('')}
           ${eventsOn(k).map((e) => `<button class="di ev" data-act="event-edit" data-eid="${e.id}">${EV_TYPES[e.type][1]} ${esc(e.title)}</button>`).join('')}
-          ${ds.map((x) => `<button class="di sh" ${x.cyc ? `data-act="shift-day" data-day="${k}"` : `data-act="duty-edit" data-id="${x.id}"`} style="--c:${x.color}"><i></i>${esc(x.label)}${x.time ? ` · ${x.time}` : ''}${x.nextDay ? ' (rạng sáng hôm sau)' : ''}${x.ov || (x.e && x.e.swap) ? ' (đổi ca)' : ''}</button>`).join('')}
+          ${ds.map((x) => `<button class="di sh" data-act="duty-edit" data-id="${x.id}\" style="--c:${x.color}"><i></i>${esc(x.label)}${x.time ? ` · ${x.time}` : ''}${x.nextDay ? ' (rạng sáng hôm sau)' : ''}${x.e.swap ? ' (đổi ca)' : ''}</button>`).join('')}
         </div>`;
       })()}
       <div class="section-head">
@@ -1388,7 +1378,7 @@
       ['money', 'Thu chi', 'wallet', '', S.money.length ? `Hôm nay ${fmtShort(outToday)} · Tháng ${fmtShort(outMonth)}` : 'Ghi chi tiêu nhanh'],
       ['events', 'Ngày quan trọng', 'gift', '', upEv ? `${esc(upEv.e.title)} · ${cdText(daysBetween(k, upEv.next))}` : 'Sinh nhật, ngày giỗ…'],
       ['lunar', 'Lịch âm', 'moonstar', '', `${l.day}/${l.month} năm ${LN.canChiYear(l.year)}`],
-      ['shift', 'Lịch trực', 'duty', '', !S.shift.on ? 'Chưa bật' : ds.length ? `Hôm nay: ${ds.map((x) => x.short).join(', ')}` : S.shift.mode === 'week' ? 'Hôm nay không có ca' : 'Hôm nay nghỉ'],
+      ['shift', 'Lịch trực', 'duty', '', !S.shift.on ? 'Chưa bật' : ds.length ? `Hôm nay: ${ds.map((x) => x.short).join(', ')}` : 'Hôm nay không có ca'],
       ['journal', 'Nhật ký', 'journal', '', j.mood ? `Hôm nay ${MOODS[j.mood - 1].e} ${MOODS[j.mood - 1].l}` : 'Ghi lại cảm xúc'],
       ['analytics', 'Thống kê', 'chart', '', `${weekDone()} việc xong tuần này`],
       ['profile', 'Cá nhân', 'user', '', 'Hồ sơ, mục tiêu, sao lưu'],
@@ -1499,11 +1489,10 @@
 
   function viewShift() {
     const sh = S.shift;
-    return `${subHead('Lịch trực', sh.mode === 'week' ? 'Nhập ca theo lịch được công bố mỗi tuần.' : 'Thiết lập chu kỳ ca một lần, lịch tự xoay.')}
+    return `${subHead('Lịch trực', 'Đánh dấu ca theo lịch được công bố mỗi tuần.')}
       <div class="sh-toggle glass"><div><b>Bật lịch trực</b><span>Hiện ca trên trang chủ và trong Lịch</span></div>
         <button class="switch ${sh.on ? 'on' : ''}" data-act="shift-toggle" role="switch" aria-checked="${sh.on}" aria-label="Bật lịch trực"><i></i></button></div>
-      ${sh.on ? `<div class="seg" style="margin:4px 0 6px"><button data-act="shift-mode" data-v="week" class="${sh.mode === 'week' ? 'on' : ''}">Lịch theo tuần</button><button data-act="shift-mode" data-v="cycle" class="${sh.mode === 'cycle' ? 'on' : ''}">Chu kỳ cố định</button></div>
-        ${sh.mode === 'week' ? dutyWeekHTML() : cycleHTML()}` : ''}`;
+      ${sh.on ? dutyWeekHTML() : ''}`;
   }
 
   function dutyWeekHTML() {
@@ -1524,14 +1513,25 @@
         <button class="icon-btn glass" data-act="duty-wk" data-n="7" aria-label="Tuần sau">${ic('chevR')}</button></div>
       <div class="dw-sum glass"><div><b>${ents.length}</b><span>ca trực</span></div><div><b>${fmtHours(mins)}</b><span>giờ trực</span></div><div><b>${ents.filter(isNight).length}</b><span>ca đêm</span></div></div>
       ${unrep ? `<div class="dw-warn">${ic('alert')} ${unrep} ca đổi chưa báo cáo Ban Giám đốc</div>` : ''}
-      <div class="dw-days">${days.map((d) => {
-        const es = entriesOn(d);
-        return `<div class="dw-day glass ${d === today ? 'today' : ''}">
+      ${(() => {
+        const pos = posOf(ui.dqPos) || posOf(D.lastPos) || D.positions[0];
+        const has = (d, sid) => D.entries.some((e) => e.date === d && e.pos === pos.id && e.shift === sid);
+        const other = (d) => D.entries.some((e) => e.date === d && e.pos !== pos.id && posOf(e.pos));
+        return `<div class="seg dq-tabs">${D.positions.map((p) => `<button data-act="dq-pos" data-id="${p.id}" class="${p.id === pos.id ? 'on' : ''}">${esc(p.short || p.name)}</button>`).join('')}</div>
+          <p class="dq-hint">Chạm vào ô để đánh dấu ca bạn trực, chạm lần nữa để bỏ.</p>
+          <div class="dq glass" style="--n:${pos.shifts.length}">
+            <span class="dq-corner">Ngày</span>
+            ${pos.shifts.map((x) => `<span class="dq-hd"><b>${esc(x.name)}</b><small>${x.start.replace(/^0/, '')}</small></span>`).join('')}
+            ${days.map((d) => `<span class="dq-day ${d === today ? 'today' : ''}"><b>${WD[dateOf(d).getDay()]}</b><small>${fmtDM(d)}</small>${other(d) ? '<i title="Có ca ở vị trí khác"></i>' : ''}</span>
+              ${pos.shifts.map((x) => { const on = has(d, x.id); return `<button class="dq-c ${on ? 'on' : ''}" data-act="dq-toggle" data-day="${d}" data-sid="${x.id}" aria-pressed="${on}" aria-label="${WD[dateOf(d).getDay()]} ${fmtDM(d)}, ${esc(x.name)} ${x.start}–${x.end}">${ic('check', 'stroke-width="3"')}</button>`; }).join('')}`).join('')}
+          </div>
+          <div class="dq-legend">${pos.shifts.map((x) => `<span><b>${esc(x.name)}</b>${x.start}–${x.end}</span>`).join('')}</div>`;
+      })()}
+      <div class="section-head"><h3>Ca của bạn tuần này</h3>${ents.length ? '<span class="page-sub" style="margin:0">Chạm để ghi chú, đổi ca</span>' : ''}</div>
+      ${ents.length ? `<div class="dw-days">${days.filter((d) => entriesOn(d).length).map((d) => `<div class="dw-day glass no-add ${d === today ? 'today' : ''}">
           <div class="dw-h"><b>${WD[dateOf(d).getDay()]}</b><span>${fmtDM(d)}</span></div>
-          <div class="dw-list">${es.map((x) => `<button class="dw-e" data-act="duty-edit" data-id="${x.e.id}" style="--c:${x.color}"><i></i><span><b>${esc(x.label)}</b><small>${x.time}${x.nextDay ? ' · rạng sáng hôm sau' : ''}${x.e.note ? ` · ${esc(x.e.note)}` : ''}</small>${x.e.swap ? `<em class="${x.e.reported ? 'ok' : ''}">${x.e.reported ? 'Đổi ca · đã báo cáo' : 'Đổi ca · chưa báo cáo'}</em>` : ''}</span></button>`).join('') || '<span class="dw-none">Không có ca</span>'}</div>
-          <button class="dw-add" data-act="duty-add" data-day="${d}" aria-label="Thêm ca ngày ${fmtDM(d)}">${ic('plus')}</button>
-        </div>`;
-      }).join('')}</div>
+          <div class="dw-list">${entriesOn(d).map((x) => `<button class="dw-e" data-act="duty-edit" data-id="${x.e.id}" style="--c:${x.color}"><i></i><span><b>${esc(x.label)}</b><small>${x.time}${x.nextDay ? ' · rạng sáng hôm sau' : ''}${x.e.note ? ` · ${esc(x.e.note)}` : ''}</small>${x.e.swap ? `<em class="${x.e.reported ? 'ok' : ''}">${x.e.reported ? 'Đổi ca · đã báo cáo' : 'Đổi ca · chưa báo cáo'}</em>` : ''}</span></button>`).join('')}</div>
+        </div>`).join('')}</div>` : '<p class="page-sub" style="margin:0 4px 14px">Chưa đánh dấu ca nào trong tuần này.</p>'}
       <div class="dw-actions"><button class="btn btn-ghost" data-act="duty-copy" data-mon="${mon}">${ic('repeat')} Chép tuần trước</button><button class="btn btn-ghost" data-act="duty-ics" data-mon="${mon}">${ic('calendar')} Đưa vào Lịch máy</button></div>
       <div class="section-head"><h3>Vị trí & giờ ca</h3><button class="link" data-act="duty-paste">${ic('list')} Dán từ văn bản</button></div>
       <div class="list glass" style="padding:4px">${D.positions.map((p) => `<button class="menu-item" data-act="duty-pos" data-id="${p.id}"><span class="mi" style="background:color-mix(in srgb, ${p.color} 16%, transparent);color:${p.color}">${p.shifts.length}</span><span class="grow">${esc(p.name)}<small class="pos-sub">${p.shifts.map((x) => `${esc(x.name)} ${x.start}–${x.end}`).join(' · ')}</small></span><span class="chev">${ic('chevR')}</span></button>`).join('')}
@@ -1543,21 +1543,6 @@
         <button class="menu-item" data-act="duty-remind" role="switch" aria-checked="${!!D.remind}"><span class="mi">${ic('bell')}</span><span class="grow">Nhắc nhập lịch vào Chủ nhật</span><span class="switch ${D.remind ? 'on' : ''}"><i></i></span></button>
         <label class="menu-item"><span class="mi">${ic('clock')}</span><span class="grow">Ngày trực bắt đầu lúc<small class="pos-sub">Ca bắt đầu trước giờ này được tính là rạng sáng hôm sau</small></span><input type="time" class="input dw-time" id="duty-daystart" value="${D.dayStart}"></label>
       </div>`;
-  }
-
-  function cycleHTML() {
-    const sh = S.shift, k = keyOf();
-    const next = Array.from({ length: 14 }, (_, i) => addDays(k, i));
-    return `
-      <div class="section-head"><h3>Mẫu có sẵn</h3></div>
-      <div class="chips sm">${SHIFT_TPL.map(([n, c], i) => `<button class="chip ${c.join() === sh.cycle.join() ? 'on' : ''}" data-act="shift-tpl" data-i="${i}">${n}</button>`).join('')}</div>
-      <div class="section-head"><h3>Chu kỳ ${sh.cycle.length} ngày</h3>${sh.cycle.length ? '<button class="link" data-act="shift-clear">Xóa hết</button>' : ''}</div>
-      <div class="cycle">${sh.cycle.map((id, i) => `<span class="sh-b" style="--c:${SHIFT_TYPES[id].color}"><em>${i + 1}</em>${SHIFT_TYPES[id].name}<button data-act="shift-rm" data-i="${i}" aria-label="Bỏ ngày này">${ic('x')}</button></span>`).join('') || '<span class="page-sub">Thêm ca vào chu kỳ bằng các nút bên dưới.</span>'}</div>
-      <div class="chips sm" style="margin-top:10px">${Object.entries(SHIFT_TYPES).map(([id, t]) => `<button class="chip" data-act="shift-add" data-id="${id}"><span class="cat-dot" style="--c:${t.color}"></span>${t.name}</button>`).join('')}</div>
-      <label class="field" style="margin-top:16px"><span>Ngày 1 của chu kỳ là</span><input class="input" type="date" id="sh-start" value="${sh.start}"></label>
-      <div class="section-head"><h3>14 ngày tới</h3><span class="page-sub" style="margin:0">Chạm để đổi ca</span></div>
-      <div class="sh-grid">${next.map((d) => { const sf = shiftOn(d); return `<button class="sh-day ${sf && sf.ov ? 'ov' : ''} ${d === k ? 'today' : ''}" data-act="shift-day" data-day="${d}" style="--c:${sf ? sf.color : 'var(--muted)'}"><span>${WD[dateOf(d).getDay()]} ${dateOf(d).getDate()}</span><b>${sf ? sf.short : '–'}</b></button>`; }).join('')}</div>
-      <p class="footnote">Ô viền đứt là ngày đã đổi ca thủ công.</p>`;
   }
 
   function viewWins() {
@@ -1676,7 +1661,7 @@
   fab.addEventListener('contextmenu', (e) => e.preventDefault());
   fab.addEventListener('click', () => {
     if (fabLong) { fabLong = false; return; }
-    const ctx = { money: () => moneySheet(), habits: () => habitSheet(), events: () => eventSheet(), tools: () => quickAddSheet(), letters: () => letterSheet(), shift: S.shift.on && S.shift.mode === 'week' ? () => dutySheet() : null }[ui.tab];
+    const ctx = { money: () => moneySheet(), habits: () => habitSheet(), events: () => eventSheet(), tools: () => quickAddSheet(), letters: () => letterSheet(), shift: S.shift.on ? () => dutySheet() : null }[ui.tab];
     ctx ? ctx() : taskSheet();
   });
 
@@ -2312,7 +2297,7 @@
           else D.positions.push({ id: uid(), name: np.name, color: DUTY_COLORS[D.positions.length % DUTY_COLORS.length], shifts: np.shifts.map((x) => ({ id: uid(), ...x })), checklist: [] });
         });
         if (!D.dayStartSet && parsed[0] && parsed[0].shifts[0]) D.dayStart = parsed[0].shifts[0].start;
-        S.shift.on = true; S.shift.mode = 'week';
+        S.shift.on = true;
         save(); closeSheet(); render();
         toast(`Đã nhập ${parsed.length} vị trí trực · ngày trực bắt đầu lúc ${D.dayStart}`);
       });
@@ -2357,19 +2342,6 @@
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
     toast(`Đã tạo file ${ents.length} ca. Mở file để thêm vào Lịch, nhắc trước 30 phút`);
-  }
-
-  function shiftDaySheet(k) {
-    const cur = shiftOn(k);
-    openSheet(`<h3>Đổi ca · ${dayLabel(k)}</h3>
-      ${Object.entries(SHIFT_TYPES).map(([id, t]) => `<button class="menu-item" data-v="${id}"><span class="mi" style="background:color-mix(in srgb, ${t.color} 16%, transparent);color:${t.color}">${t.short}</span><span style="flex:1">${t.name}${t.time ? ` <small class="hint">${t.time}</small>` : ''}</span>${cur && cur.id === id ? `<span style="color:var(--primary)">${ic('check', 'width="20" height="20" stroke-width="3"')}</span>` : ''}</button>`).join('')}
-      ${S.shiftOv[k] ? `<button class="menu-item" data-v=""><span class="mi">${ic('reset')}</span>Theo chu kỳ</button>` : ''}`, (sh) => {
-      sh.addEventListener('click', (e) => {
-        const b = e.target.closest('[data-v]'); if (!b) return;
-        if (b.dataset.v) S.shiftOv[k] = b.dataset.v; else delete S.shiftOv[k];
-        save(); closeSheet(); render();
-      });
-    });
   }
 
   function toggleTask(id, occ) {
@@ -2687,22 +2659,25 @@
       case 'lu-month': ui.lunarMonth = shiftMonth(ui.lunarMonth || (ui.lunarSel || today).slice(0, 7), +b.dataset.n); render(); break;
       case 'lu-pick': ui.lunarSel = b.dataset.day; render(); break;
       case 'shift-toggle': S.shift.on = !S.shift.on; save(); render(); break;
-      case 'shift-tpl': {
-        const tpl = SHIFT_TPL[+b.dataset.i];
-        S.shift.cycle = tpl[1].slice();
-        S.shift.start = tpl[1].length === 7 ? mondayOf(today) : today;
-        save(); render(); toast(`Đã áp dụng: ${tpl[0]}`);
-        break;
-      }
-      case 'shift-add': S.shift.cycle.push(b.dataset.id); save(); render(); break;
-      case 'shift-rm': S.shift.cycle.splice(+b.dataset.i, 1); save(); render(); break;
-      case 'shift-clear': S.shift.cycle = []; save(); render(); break;
-      case 'shift-day': shiftDaySheet(b.dataset.day); break;
       case 'letter-new': letterSheet(); break;
       case 'letter-open': openLetter(b.dataset.id); break;
       case 'win-view': winViewer(b.dataset.id); break;
       case 'win-month': ui.winMonth = shiftMonth(ui.winMonth || today.slice(0, 7), +b.dataset.n); render(); break;
-      case 'shift-mode': S.shift.mode = b.dataset.v; save(); render(); break;
+      case 'dq-pos': ui.dqPos = b.dataset.id; S.duty.lastPos = b.dataset.id; save(); render(); break;
+      case 'dq-toggle': {
+        const D = S.duty, pos = posOf(ui.dqPos) || posOf(D.lastPos) || D.positions[0];
+        const d = b.dataset.day, sid = b.dataset.sid;
+        const i = D.entries.findIndex((e) => e.date === d && e.pos === pos.id && e.shift === sid);
+        if (i >= 0) {
+          const [old] = D.entries.splice(i, 1); save(); render();
+          if (old.swap || old.note) toast('Đã bỏ ca', { fn: () => { D.entries.splice(i, 0, old); save(); render(); } });
+        } else {
+          D.entries.push({ id: uid(), date: d, pos: pos.id, shift: sid, note: '', swap: false, swapWith: '', reported: false, checks: [] });
+          save(); render();
+          if (navigator.vibrate) navigator.vibrate(10);
+        }
+        break;
+      }
       case 'duty-wk': ui.dutyWeek = addDays(ui.dutyWeek || defaultDutyWeek(), +b.dataset.n); render(); break;
       case 'duty-week': ui.dutyWeek = b.dataset.mon; ui.tab === 'shift' ? render() : go('shift'); break;
       case 'duty-add': dutySheet(null, b.dataset.day); break;
@@ -2808,7 +2783,6 @@
   });
 
   $('#view').addEventListener('change', (e) => {
-    if (e.target.id === 'sh-start' && e.target.value) { S.shift.start = e.target.value; save(); render(); }
     if (e.target.matches('[data-win-input]')) { const file = e.target.files[0]; e.target.value = ''; winFromFile(file); return; }
     if (e.target.id === 'duty-daystart' && e.target.value) { S.duty.dayStart = e.target.value; S.duty.dayStartSet = true; save(); render(); toast(`Ngày trực bắt đầu lúc ${e.target.value}`); }
   });
