@@ -843,40 +843,125 @@
     const input = '<input type="file" accept="image/*" class="sr-only" data-win-input>';
     return `<section class="locket">
       <div class="section-head"><h3 class="h-ic"><span class="lk-ic">${ic('wins')}</span>Chiến tích hôm nay</h3><button class="link" data-act="go" data-to="wins">${st ? `🔥 ${st} ngày` : 'Xem tất cả'} ${ic('chevR')}</button></div>
-      ${w ? `<div class="lk-frame"><button class="lk-photo" data-act="win-view" data-id="${w.id}" aria-label="Xem ảnh chiến tích"><img data-photo="${w.id}" alt="${esc(w.caption || 'Chiến tích hôm nay')}">
+      ${w ? `<div class="lk-frame" style="${winRatioStyle(w)}"><button class="lk-photo" data-act="win-view" data-id="${w.id}" aria-label="Xem ảnh chiến tích"><img data-photo="${w.id}" alt="${esc(w.caption || 'Chiến tích hôm nay')}">
           <span class="lk-time">${hm(w.ts)}</span>${list.length > 1 ? `<span class="lk-n">${list.length} ảnh</span>` : ''}${w.caption ? `<span class="lk-cap">${esc(w.caption)}</span>` : ''}</button>
           <label class="lk-add" aria-label="Thêm ảnh chiến tích">${ic('plus', 'stroke-width="2.6"')}${input}</label></div>`
         : `<label class="lk-empty glass"><span class="lk-cam">${ic('camera')}</span><b>Chụp ảnh chiến tích hôm nay</b><span>Một khoảnh khắc khiến bạn tự hào: xong việc khó, buổi tập, cuốn sách, bữa cơm gia đình…</span>${input}</label>`}
     </section>`;
   }
+  const WIN_RATIOS = [['1:1', 'Vuông', 1], ['5:4', 'Ngang', 5 / 4], ['4:5', 'Dọc', 4 / 5], ['16:9', 'Rộng', 16 / 9]];
+  const winRatioStyle = (w) => { const r = WIN_RATIOS.find((x) => x[0] === w.ratio) || WIN_RATIOS[1]; return `--r:${r[2]};--ar:${r[0].replace(':', ' / ')}`; };
+
+  // Thêm ảnh chiến tích: chọn tỉ lệ khung, kéo/phóng to để cắt, rồi lưu
   async function winFromFile(file) {
     if (!file) return;
-    let blob;
-    try { blob = await resizeImage(file, 1280, 0.82); } catch { toast('Không đọc được ảnh này'); return; }
-    const url = URL.createObjectURL(blob);
-    let kept = false;
+    let src;
+    try { src = await resizeImage(file, 2400, 0.92); } catch { toast('Không đọc được ảnh này'); return; }
+    const url = URL.createObjectURL(src);
+    const img = new Image();
+    try { await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; }); }
+    catch { URL.revokeObjectURL(url); toast('Không đọc được ảnh này'); return; }
+    const nw = img.naturalWidth, nh = img.naturalHeight;
+    let ratio = WIN_RATIOS[0];
     const TAGS = ['Hoàn thành mục tiêu', 'Buổi tập hôm nay', 'Đọc xong sách', 'Học được điều mới', 'Bên gia đình', 'Ca trực an toàn', 'Ăn uống lành mạnh'];
     openSheet(`<h3>Chiến tích hôm nay</h3>
-      <div class="lk-prev"><img src="${url}" alt="Ảnh vừa chọn"></div>
+      <div class="seg cr-ratios" id="crr">${WIN_RATIOS.map(([id, l], i) => `<button type="button" data-i="${i}" class="${i === 0 ? 'on' : ''}">${l}<small>${id}</small></button>`).join('')}</div>
+      <div class="cr-box" id="crb" style="--r:${ratio[2]}" aria-label="Vùng cắt ảnh. Kéo để di chuyển ảnh">
+        <img class="cr-img" src="${url}" alt="" draggable="false"><div class="cr-grid"></div>
+      </div>
+      <div class="cr-zoom"><button type="button" data-z="-1" aria-label="Thu nhỏ">${ic('minus')}</button><input type="range" id="crz" min="0" max="100" value="0" aria-label="Mức phóng to"><button type="button" data-z="1" aria-label="Phóng to">${ic('plus')}</button></div>
+      <p class="cr-hint">Kéo ảnh để chọn vùng, chụm hai ngón hoặc kéo thanh để phóng to. Chạm đúp để căn lại.</p>
       <form id="wf" autocomplete="off">
         <label class="field"><span>Chú thích</span><input class="input" name="cap" maxlength="80" placeholder="Hôm nay mình đã…"></label>
         <div class="chips sm" id="wt">${TAGS.map((t) => `<button type="button" class="chip">${t}</button>`).join('')}</div>
         <button class="btn btn-primary btn-block" type="submit" style="margin-top:16px">${ic('check', 'stroke-width="2.6"')} Lưu chiến tích</button>
       </form>`, (sh) => {
-      const f = $('#wf', sh);
+      const box = $('#crb', sh), im = $('.cr-img', sh), zr = $('#crz', sh), f = $('#wf', sh);
+      let W = 0, H = 0, sc = 1, x = 0, y = 0, minS = 1;
+      im.style.width = `${nw}px`; im.style.height = `${nh}px`;
+      const apply = () => {
+        im.style.transform = `translate(${x}px, ${y}px) scale(${sc})`;
+        zr.value = String(Math.round(((sc / minS - 1) / 3) * 100));
+        zr.style.setProperty('--p', `${zr.value}%`);
+      };
+      const clamp = () => {
+        sc = Math.min(Math.max(sc, minS), minS * 4);
+        x = Math.min(0, Math.max(W - nw * sc, x));
+        y = Math.min(0, Math.max(H - nh * sc, y));
+      };
+      const zoomAt = (ns, px, py) => {
+        const ix = (px - x) / sc, iy = (py - y) / sc;
+        sc = Math.min(Math.max(ns, minS), minS * 4);
+        x = px - ix * sc; y = py - iy * sc;
+        clamp(); apply();
+      };
+      // Tính lại khi đổi tỉ lệ: giữ tâm và mức phóng
+      const layout = (keep) => {
+        const cx = keep && W ? (W / 2 - x) / sc : nw / 2, cy = keep && H ? (H / 2 - y) / sc : nh / 2, rel = keep && W ? sc / minS : 1;
+        W = box.clientWidth; H = box.clientHeight;
+        minS = Math.max(W / nw, H / nh); sc = minS * rel;
+        x = W / 2 - cx * sc; y = H / 2 - cy * sc;
+        clamp(); apply();
+      };
+      requestAnimationFrame(() => layout(false));
+      $('#crr', sh).addEventListener('click', (e) => {
+        const b = e.target.closest('button'); if (!b) return;
+        ratio = WIN_RATIOS[+b.dataset.i];
+        $$('#crr button', sh).forEach((z) => z.classList.toggle('on', z === b));
+        box.style.setProperty('--r', ratio[2]);
+        requestAnimationFrame(() => layout(true));
+      });
+      // Kéo một ngón để di chuyển, hai ngón để phóng to
+      const pts = new Map();
+      let pinch = null;
+      box.addEventListener('pointerdown', (e) => {
+        box.setPointerCapture(e.pointerId);
+        pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        box.classList.add('drag'); pinch = null;
+      });
+      box.addEventListener('pointermove', (e) => {
+        if (!pts.has(e.pointerId)) return;
+        const prev = pts.get(e.pointerId);
+        pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (pts.size === 1) { x += e.clientX - prev.x; y += e.clientY - prev.y; clamp(); apply(); return; }
+        const r = box.getBoundingClientRect(), [a, b] = [...pts.values()];
+        const d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2 - r.left, my = (a.y + b.y) / 2 - r.top;
+        if (pinch) { zoomAt(sc * (d / pinch.d), mx, my); x += mx - pinch.mx; y += my - pinch.my; clamp(); apply(); }
+        pinch = { d, mx, my };
+      });
+      const up = (e) => { pts.delete(e.pointerId); pinch = null; if (!pts.size) box.classList.remove('drag'); };
+      box.addEventListener('pointerup', up);
+      box.addEventListener('pointercancel', up);
+      box.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const r = box.getBoundingClientRect();
+        zoomAt(sc * (e.deltaY < 0 ? 1.08 : 1 / 1.08), e.clientX - r.left, e.clientY - r.top);
+      }, { passive: false });
+      box.addEventListener('dblclick', () => layout(false));
+      // Không để thao tác trong khung ảnh kéo đóng bảng
+      ['touchstart', 'touchmove'].forEach((ev) => box.addEventListener(ev, (e) => e.stopPropagation(), { passive: true }));
+      zr.addEventListener('input', () => zoomAt(minS * (1 + (zr.value / 100) * 3), W / 2, H / 2));
+      $('.cr-zoom', sh).addEventListener('click', (e) => { const b = e.target.closest('[data-z]'); if (b) zoomAt(sc * (b.dataset.z > 0 ? 1.2 : 1 / 1.2), W / 2, H / 2); });
       $('#wt', sh).addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) f.cap.value = b.textContent; });
       f.addEventListener('submit', async (e) => {
         e.preventDefault();
+        const r = ratio[2], outW = r >= 1 ? 1280 : Math.round(1280 * r), outH = Math.round(outW / r);
+        const c = document.createElement('canvas');
+        c.width = outW; c.height = outH;
+        c.getContext('2d').drawImage(img, -x / sc, -y / sc, W / sc, H / sc, 0, 0, outW, outH);
+        const blob = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.86));
+        if (!blob) { toast('Không cắt được ảnh này'); return; }
         const id = uid();
         try { await PhotoDB.put(id, blob); } catch { toast('Không lưu được ảnh, có thể bộ nhớ đã đầy'); return; }
-        photoURLs[id] = url; kept = true;
+        photoURLs[id] = URL.createObjectURL(blob);
         const first = !winsOn(keyOf()).length;
-        S.wins.push({ id, date: keyOf(), caption: f.cap.value.trim(), ts: Date.now() });
+        S.wins.push({ id, date: keyOf(), caption: f.cap.value.trim(), ts: Date.now(), ratio: ratio[0] });
         save(); closeSheet(); render();
         first ? celebrate(`Đã lưu chiến tích hôm nay 🏆 Chuỗi ${winStreak()} ngày`) : toast('Đã thêm ảnh chiến tích');
       });
-    }, () => { if (!kept) URL.revokeObjectURL(url); });
+    }, () => URL.revokeObjectURL(url));
   }
+
   function winViewer(id) {
     const w = S.wins.find((x) => x.id === id);
     if (!w) return;

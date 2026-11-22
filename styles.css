@@ -1286,3 +1286,34 @@ body.reading .toast.show { transform: translate(-50%, 0); }
 body.reading .toast { top: auto; bottom: calc(24px + var(--safe-b)); transform: translate(-50%, 24px) scale(.96); }
 body.reading .toast.show { transform: translate(-50%, 0) scale(1); }
 .toast { background: color-mix(in srgb, var(--bg-2) 95%, transparent); }
+
+/* ================= Cắt ảnh chiến tích ================= */
+.cr-ratios { margin-bottom: 14px; }
+.cr-ratios button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; height: 48px; line-height: 1.15; }
+.cr-ratios small { font-size: 10.5px; font-weight: 600; opacity: .7; }
+.cr-box {
+  position: relative; overflow: hidden; margin: 0 auto; touch-action: none; cursor: grab;
+  width: min(100%, calc(50vh * var(--r))); aspect-ratio: var(--r);
+  border-radius: 28px; background: #0b1f14; box-shadow: 0 0 0 3px var(--primary), var(--shadow);
+  -webkit-user-select: none; user-select: none; transition: width .25s ease;
+}
+.cr-box.drag { cursor: grabbing; }
+.cr-img { position: absolute; left: 0; top: 0; max-width: none; transform-origin: 0 0; pointer-events: none; -webkit-user-drag: none; }
+.cr-grid {
+  position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .2s;
+  background:
+    linear-gradient(90deg, transparent calc(33.33% - .5px), rgba(255,255,255,.5) calc(33.33% - .5px), rgba(255,255,255,.5) calc(33.33% + .5px), transparent calc(33.33% + .5px), transparent calc(66.66% - .5px), rgba(255,255,255,.5) calc(66.66% - .5px), rgba(255,255,255,.5) calc(66.66% + .5px), transparent calc(66.66% + .5px)),
+    linear-gradient(180deg, transparent calc(33.33% - .5px), rgba(255,255,255,.5) calc(33.33% - .5px), rgba(255,255,255,.5) calc(33.33% + .5px), transparent calc(33.33% + .5px), transparent calc(66.66% - .5px), rgba(255,255,255,.5) calc(66.66% - .5px), rgba(255,255,255,.5) calc(66.66% + .5px), transparent calc(66.66% + .5px));
+}
+.cr-box.drag .cr-grid { opacity: 1; }
+.cr-zoom { display: flex; align-items: center; gap: 10px; margin: 14px 2px 4px; }
+.cr-zoom button { width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; color: var(--primary); background: var(--primary-soft); flex-shrink: 0; }
+.cr-zoom button svg { width: 18px; height: 18px; }
+.cr-zoom input { flex: 1; accent-color: var(--primary); height: 28px; }
+.cr-hint { margin: 2px 4px 14px; font-size: 12.5px; color: var(--muted); text-align: center; }
+/* Khung trang chủ theo tỉ lệ đã cắt */
+.lk-frame { width: min(100%, calc(440px * var(--r, 1.25))); margin: 0 auto; }
+.lk-photo { aspect-ratio: var(--ar, 5 / 4); }
+.cr-zoom input { -webkit-appearance: none; appearance: none; height: 8px; border-radius: 99px; background: linear-gradient(to right, var(--primary) var(--p, 0%), var(--primary-soft) var(--p, 0%)); }
+.cr-zoom input::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px; border-radius: 50%; background: #fff; border: 3px solid var(--primary); box-shadow: 0 4px 10px -4px rgba(24,169,87,.8); }
+.cr-zoom input::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 3px solid var(--primary); }
