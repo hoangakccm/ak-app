@@ -150,18 +150,20 @@
   const canChiDay = (jd) => `${CAN[(jd + 9) % 10]} ${CHI[(jd + 1) % 12]}`;
 
   // Ngày lễ: dương lịch (ngày/tháng) và âm lịch (ngày/tháng)
+  // Ngày lễ: [tên, loại biểu tượng]
   const SOLAR_HOLIDAYS = {
-    '1-1': 'Tết Dương lịch', '3-2': 'Ngày thành lập Đảng', '14-2': 'Lễ Tình nhân', '8-3': 'Quốc tế Phụ nữ',
-    '26-3': 'Ngày thành lập Đoàn TNCS', '30-4': 'Giải phóng miền Nam', '1-5': 'Quốc tế Lao động',
-    '19-5': 'Ngày sinh Chủ tịch Hồ Chí Minh', '1-6': 'Quốc tế Thiếu nhi', '28-6': 'Ngày Gia đình Việt Nam',
-    '27-7': 'Ngày Thương binh Liệt sĩ', '19-8': 'Cách mạng Tháng Tám · Ngày truyền thống CAND',
-    '2-9': 'Quốc khánh', '10-10': 'Giải phóng Thủ đô', '20-10': 'Ngày Phụ nữ Việt Nam',
-    '20-11': 'Ngày Nhà giáo Việt Nam', '22-12': 'Thành lập Quân đội Nhân dân', '24-12': 'Đêm Giáng sinh',
+    '1-1': ['Tết Dương lịch', 'firework'], '3-2': ['Ngày thành lập Đảng', 'star'], '14-2': ['Lễ Tình nhân', 'heart'],
+    '8-3': ['Quốc tế Phụ nữ', 'heart'], '26-3': ['Ngày thành lập Đoàn TNCS', 'star'], '30-4': ['Giải phóng miền Nam', 'star'],
+    '1-5': ['Quốc tế Lao động', 'hammer'], '19-5': ['Ngày sinh Chủ tịch Hồ Chí Minh', 'star'], '1-6': ['Quốc tế Thiếu nhi', 'balloon'],
+    '28-6': ['Ngày Gia đình Việt Nam', 'heart'], '27-7': ['Ngày Thương binh Liệt sĩ', 'candle'],
+    '19-8': ['Cách mạng Tháng Tám · Ngày truyền thống CAND', 'shield'], '2-9': ['Quốc khánh', 'star'],
+    '10-10': ['Giải phóng Thủ đô', 'star'], '20-10': ['Ngày Phụ nữ Việt Nam', 'heart'], '20-11': ['Ngày Nhà giáo Việt Nam', 'cap'],
+    '22-12': ['Thành lập Quân đội Nhân dân', 'star'], '24-12': ['Đêm Giáng sinh', 'tree'],
   };
   const LUNAR_HOLIDAYS = {
-    '1-1': 'Tết Nguyên đán', '2-1': 'Mùng 2 Tết', '3-1': 'Mùng 3 Tết', '15-1': 'Rằm tháng Giêng',
-    '3-3': 'Tết Hàn thực', '10-3': 'Giỗ Tổ Hùng Vương', '15-4': 'Lễ Phật đản', '5-5': 'Tết Đoan ngọ',
-    '15-7': 'Lễ Vu Lan', '15-8': 'Tết Trung thu', '23-12': 'Ông Công Ông Táo',
+    '1-1': ['Tết Nguyên đán', 'tet'], '2-1': ['Mùng 2 Tết', 'tet'], '3-1': ['Mùng 3 Tết', 'tet'], '15-1': ['Rằm tháng Giêng', 'moon'],
+    '3-3': ['Tết Hàn thực', 'bowl'], '10-3': ['Giỗ Tổ Hùng Vương', 'temple'], '15-4': ['Lễ Phật đản', 'lotus'],
+    '5-5': ['Tết Đoan ngọ', 'bowl'], '15-7': ['Lễ Vu Lan', 'lotus'], '15-8': ['Tết Trung thu', 'lantern'], '23-12': ['Ông Công Ông Táo', 'fish'],
   };
 
   window.Lunar = {

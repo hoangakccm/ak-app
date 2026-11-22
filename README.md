@@ -1,6 +1,6 @@
 # AK Planner
 
-Ứng dụng cá nhân quản lý công việc, thời gian tập trung và mục tiêu hằng ngày, theo phong cách glassmorphism, tông xanh lá tươi, điểm vàng và đỏ.
+Ứng dụng cá nhân quản lý công việc, thời gian tập trung và mục tiêu hằng ngày, theo phong cách glassmorphism, màu chủ đạo xanh lá tươi, bộ biểu tượng ngày lễ vẽ riêng (hoa mai, sao, đèn lồng, hoa sen…).
 
 ## Tính năng
 
@@ -11,6 +11,9 @@
 - **Top 3 hôm nay**: chọn 3 việc quan trọng nhất, ghim lên đầu trang chủ. Danh sách việc chia nhóm Quá hạn / Sáng / Chiều / Tối / Trong ngày / Đã xong.
 - **Uống nước** (đếm ly theo mục tiêu), **tâm trạng** 5 mức và **nhật ký** một dòng; buổi tối có **Tổng kết ngày** với 3 câu hỏi và tự thêm ưu tiên của ngày mai vào Top 3.
 - **Màn chào lần đầu**: hỏi tên, ảnh đại diện, thói quen muốn rèn và mục tiêu đọc sách, uống nước.
+- **Màn chào mỗi ngày**: lần đầu mở app trong ngày hiện ngày dương/âm, ngày lễ, châm ngôn, tóm tắt “Hôm nay của bạn” (thư đến hạn, ngày quan trọng, ca trực, việc, thói quen, đọc sách), kết quả hôm qua và chọn tâm trạng.
+- **Chiến tích hôm nay** (kiểu Locket): chụp hoặc chọn ảnh khoảnh khắc đáng tự hào, thêm chú thích; khung ảnh lớn trên trang chủ, lịch ảnh theo tháng, chuỗi ngày, xem toàn màn hình, chia sẻ. Ảnh lưu trong IndexedDB của thiết bị.
+- **Thư gửi bản thân tương lai**: viết thư, chọn mở sau 1/3/6/12 tháng hoặc ngày tùy chọn; thư được niêm phong đến đúng ngày, khi đến hạn app báo trên trang chủ và màn chào.
 - **Tab Tiện ích** gom các công cụ dưới đây cùng Thống kê, Nhật ký và Cá nhân. Nút **+** thêm theo ngữ cảnh trang đang mở; **giữ nút +** để mở menu thêm nhanh.
 - **Thói quen**: chọn biểu tượng, màu, các ngày trong tuần, số lần mỗi ngày; chạm để đánh dấu trên trang chủ; chuỗi ngày liên tục, tỉ lệ 30 ngày, lịch 7 ngày.
 - **Lịch âm**: ngày âm trên từng ô lịch, can chi ngày/tháng/năm, lịch tháng, mùng 1 và rằm tới, ngày lễ dương lịch và âm lịch sắp tới (tính theo giờ Việt Nam, thuật toán thiên văn của Hồ Ngọc Đức).
