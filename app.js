@@ -97,7 +97,10 @@
     return { h: Math.floor(m / 60), m: m % 60 };
   }
 
-  const APP_VERSION = '1.15 · chiến tích vuốt ảnh';
+  const APP_VERSION = '1.16';
+  const APP_DATE = '22/11/2026';
+  const APP_NOTE = 'Hiện số phiên bản, kiểm tra cập nhật';
+  let swReg = null;
 
   // ---------- State ----------
   const STORE = 'ak-planner-v1';
@@ -1515,7 +1518,7 @@
       ['shift', 'Lịch trực', 'duty', '', !S.shift.on ? 'Chưa bật' : ds.length ? `Hôm nay: ${ds.map((x) => x.short).join(', ')}` : 'Hôm nay không có ca'],
       ['journal', 'Nhật ký', 'journal', '', j.mood ? `Hôm nay ${MOODS[j.mood - 1].e} ${MOODS[j.mood - 1].l}` : 'Ghi lại cảm xúc'],
       ['analytics', 'Thống kê', 'chart', '', `${weekDone()} việc xong tuần này`],
-      ['profile', 'Cá nhân', 'user', '', 'Hồ sơ, mục tiêu, sao lưu'],
+      ['profile', 'Cá nhân', 'user', '', `Hồ sơ, mục tiêu, sao lưu · Phiên bản ${APP_VERSION}`],
     ];
     return `${pageHead('Tiện ích', 'Mọi công cụ cho một ngày trọn vẹn.')}
       <div class="tools">${tiles.map(([id, n, i, , sub]) => `<button class="tool glass ${id === 'letters' && dueL ? 'hot' : ''}" data-act="go" data-to="${id}"><span class="tool-ic">${ic(i)}</span><b>${n}</b><span>${sub}</span></button>`).join('')}</div>`;
@@ -1744,7 +1747,12 @@
         <button class="menu-item" data-act="import"><span class="mi">${ic('upload')}</span><span class="grow">Khôi phục dữ liệu</span><span class="chev">${ic('chevR')}</span></button>
         <button class="menu-item danger" data-act="reset"><span class="mi">${ic('trash')}</span><span class="grow">Xóa toàn bộ dữ liệu</span></button>
       </div>
-      <p class="footnote">Dữ liệu được lưu riêng trên thiết bị này.<br>Phiên bản ${APP_VERSION}</p>`;
+      <div class="ver glass">
+        <img src="icons/icon.svg" alt="" class="ver-ic">
+        <div class="ver-t"><b>AK Planner · Phiên bản ${APP_VERSION}</b><span>Cập nhật ${APP_DATE} · ${APP_NOTE}</span></div>
+        <button class="btn btn-ghost ver-btn" data-act="check-update">${ic('reset')} Kiểm tra</button>
+      </div>
+      <p class="footnote">Dữ liệu được lưu riêng trên thiết bị này.</p>`;
   }
 
   const VIEWS = { home: viewHome, calendar: viewCalendar, read: viewRead, tools: viewTools, analytics: viewAnalytics, profile: viewProfile, journal: viewJournal, habits: viewHabits, events: viewEvents, lunar: viewLunar, money: viewMoney, shift: viewShift, wins: viewWins, letters: viewLetters };
@@ -2778,6 +2786,16 @@
       case 'review': reviewSheet(b.dataset.day || today); break;
       case 'go-journal': go('journal'); break;
       case 'go': go(b.dataset.to); break;
+      case 'check-update': {
+        if (!swReg) { toast(`Bạn đang dùng phiên bản ${APP_VERSION}`); break; }
+        b.disabled = true;
+        swReg.update().then(() => {
+          b.disabled = false;
+          if (swReg.installing || swReg.waiting) toast('Đang tải phiên bản mới, app sẽ tự mở lại…');
+          else toast(`Bạn đang dùng phiên bản mới nhất (${APP_VERSION})`);
+        }).catch(() => { b.disabled = false; toast('Chưa kiểm tra được, hãy thử lại khi có mạng'); });
+        break;
+      }
       case 'habit-tap': { const h = S.habits.find((x) => x.id === b.dataset.hid); if (h) hTap(h); break; }
       case 'habit-new': habitSheet(); break;
       case 'habit-edit': habitSheet(S.habits.find((x) => x.id === b.dataset.hid)); break;
@@ -3060,6 +3078,7 @@
     // Tự kiểm tra bản mới mỗi khi mở lại app; có bản mới thì tải lại ngay (hoặc hỏi nếu đang nhập dở)
     const hadController = !!navigator.serviceWorker.controller;
     navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => {
+      swReg = reg;
       document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
     }).catch(() => {});
     let reloading = false;

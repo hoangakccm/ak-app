@@ -1351,3 +1351,11 @@ body.reading .toast.show { transform: translate(-50%, 0) scale(1); }
   background: linear-gradient(135deg, rgba(255, 255, 255, .62), rgba(255, 255, 255, .3));
   border-color: rgba(255, 255, 255, .85);
 }
+
+/* Thẻ phiên bản trong trang Cá nhân */
+.ver { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; border-radius: 22px; padding: 12px 12px 12px 14px; margin-top: 4px; }
+.ver-ic { width: 40px; height: 40px; border-radius: 12px; }
+.ver-t b { display: block; font-size: 14.5px; }
+.ver-t span { font-size: 12px; color: var(--muted); line-height: 1.4; }
+.ver-btn { height: 38px; padding: 0 12px; font-size: 13px; border-radius: 12px; }
+.ver-btn svg { width: 16px; height: 16px; }
