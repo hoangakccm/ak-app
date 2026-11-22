@@ -56,7 +56,7 @@
     study: { name: 'Học tập', color: 'var(--c-study)' },
     personal: { name: 'Cá nhân', color: 'var(--c-personal)' },
   };
-  const EMOJIS = ['🧑🏻‍💻', '👨🏻', '👩🏻', '🧑🏻‍🎨', '🧑🏻‍🚀', '🦊', '🐼', '🐱', '🌸', '🌟', '🔥', '🎧'];
+  const EMOJIS = ['👮🏻‍♂️', '👮🏻‍♀️', '🧑🏻‍💻', '👨🏻', '👩🏻', '🧑🏻‍🎨', '🧑🏻‍🚀', '🦊', '🐼', '🐱', '🌸', '🌟', '🔥', '🎧', '⭐', '🇻🇳'];
 
   function dayLabel(k) {
     const t = keyOf();
@@ -82,7 +82,7 @@
     return {
       name: 'Hoàng',
       tagline: 'Hôm nay thật năng suất và chinh phục mục tiêu nhé.',
-      avatar: { type: 'emoji', value: '🧑🏻‍💻' },
+      avatar: { type: 'emoji', value: '👮🏻‍♂️' },
       theme: 'auto',
       focusPreset: 25,
       tasks: [
@@ -226,17 +226,17 @@
 
       <section class="stats">
         <button class="stat glass" data-act="go-analytics">
-          <span class="stat-ic ic-purple">${ic('bars', 'stroke-width="2.6"')}</span>
+          <span class="stat-ic ic-green">${ic('bars', 'stroke-width="2.6"')}</span>
           <span class="stat-val">${weekDone()}</span>
           <span class="stat-lbl">Việc tuần này</span>
         </button>
         <button class="stat glass" data-act="focus">
-          <span class="stat-ic ic-blue">${ic('clock', 'stroke-width="2.4"')}</span>
+          <span class="stat-ic ic-gold">${ic('clock', 'stroke-width="2.4"')}</span>
           <span class="stat-val" id="focus-stat">${f.h}<small>h</small>${pad(f.m)}<small>m</small></span>
           <span class="stat-lbl">${S.timer && S.timer.endsAt ? 'Đang chạy…' : 'Tập trung'}</span>
         </button>
         <button class="stat glass" data-act="go-analytics">
-          <span class="stat-ic ic-orange">${ic('flame', 'stroke-width="2.2"')}</span>
+          <span class="stat-ic ic-red">${ic('flame', 'stroke-width="2.2"')}</span>
           <span class="stat-val">${streak()}</span>
           <span class="stat-lbl">Ngày liên tục</span>
         </button>
@@ -245,12 +245,12 @@
       <button class="goal" data-act="go-analytics">
         <svg class="mtn" viewBox="0 0 230 140" aria-hidden="true">
           <defs>
-            <linearGradient id="mg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#c7c3ff" stop-opacity=".1"/></linearGradient>
-            <linearGradient id="mg2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5a4fd8" stop-opacity=".9"/><stop offset="1" stop-color="#7b72ee" stop-opacity="0"/></linearGradient>
+            <linearGradient id="mg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#d8e6b8" stop-opacity=".1"/></linearGradient>
+            <linearGradient id="mg2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1f3a17" stop-opacity=".9"/><stop offset="1" stop-color="#4d7432" stop-opacity="0"/></linearGradient>
           </defs>
           <path d="M60 140 140 34l20 18 18-14 52 102z" fill="url(#mg2)"/>
           <path d="M140 34l-14 18 10-3 8 9 6-12 10 6z" fill="url(#mg)"/>
-          <path d="M0 140 70 80l30 22 40-30 90 68z" fill="#4d43c9" opacity=".35"/>
+          <path d="M0 140 70 80l30 22 40-30 90 68z" fill="#1c3315" opacity=".35"/>
         </svg>
         <div class="goal-tag"><span class="ring">${ic('target', 'stroke-width="2.4"')}</span>Mục tiêu hôm nay</div>
         <h2>${title}</h2>
@@ -337,13 +337,13 @@
       <h1 class="page-title">Thống kê</h1>
       <p class="page-sub">Nhìn lại 7 ngày gần nhất của bạn.</p>
       <div class="kpis">
-        <div class="kpi glass"><span class="stat-ic ic-purple">${ic('target', 'stroke-width="2.4"')}</span><div class="v">${rate}<small>%</small></div><div class="l">Tỉ lệ hoàn thành</div></div>
-        <div class="kpi glass"><span class="stat-ic ic-blue">${ic('clock', 'stroke-width="2.4"')}</span><div class="v">${focusTot.h}<small>h</small> ${pad(focusTot.m)}<small>m</small></div><div class="l">Thời gian tập trung</div></div>
-        <div class="kpi glass"><span class="stat-ic ic-orange">${ic('flame', 'stroke-width="2.2"')}</span><div class="v">${bestStreak()}<small> ngày</small></div><div class="l">Chuỗi dài nhất</div></div>
-        <div class="kpi glass"><span class="stat-ic ic-purple">${ic('check', 'stroke-width="3"')}</span><div class="v">${totalDone}</div><div class="l">Tổng việc đã xong</div></div>
+        <div class="kpi glass"><span class="stat-ic ic-green">${ic('target', 'stroke-width="2.4"')}</span><div class="v">${rate}<small>%</small></div><div class="l">Tỉ lệ hoàn thành</div></div>
+        <div class="kpi glass"><span class="stat-ic ic-gold">${ic('clock', 'stroke-width="2.4"')}</span><div class="v">${focusTot.h}<small>h</small> ${pad(focusTot.m)}<small>m</small></div><div class="l">Thời gian tập trung</div></div>
+        <div class="kpi glass"><span class="stat-ic ic-red">${ic('flame', 'stroke-width="2.2"')}</span><div class="v">${bestStreak()}<small> ngày</small></div><div class="l">Chuỗi dài nhất</div></div>
+        <div class="kpi glass"><span class="stat-ic ic-green">${ic('check', 'stroke-width="3"')}</span><div class="v">${totalDone}</div><div class="l">Tổng việc đã xong</div></div>
       </div>
       <div class="card glass"><div class="card-head"><h4>Việc hoàn thành</h4><span>${doneArr.reduce((a, b) => a + b, 0)} việc</span></div>${barChart(doneArr, '', '')}</div>
-      <div class="card glass"><div class="card-head"><h4>Phút tập trung</h4><span>${focusArr.reduce((a, b) => a + b, 0)} phút</span></div>${barChart(focusArr, 'blue', '')}</div>
+      <div class="card glass"><div class="card-head"><h4>Phút tập trung</h4><span>${focusArr.reduce((a, b) => a + b, 0)} phút</span></div>${barChart(focusArr, 'gold', '')}</div>
       <div class="card glass"><div class="card-head"><h4>Theo danh mục</h4><span>Tất cả thời gian</span></div>${catRows}</div>
       <button class="btn btn-primary btn-block" data-act="focus">${ic('play')} Bắt đầu phiên tập trung</button>`;
   }
@@ -612,7 +612,7 @@
       <div class="seg" id="t-presets" style="margin-bottom:18px">${[15, 25, 45, 60].map((p) => `<button data-p="${p}">${p} phút</button>`).join('')}</div>
       <div class="timer">
         <svg viewBox="0 0 240 240" aria-hidden="true">
-          <defs><linearGradient id="tg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a08cff"/><stop offset="1" stop-color="#6a6cf4"/></linearGradient></defs>
+          <defs><linearGradient id="tg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8fb35a"/><stop offset="1" stop-color="#3e6b2f"/></linearGradient></defs>
           <circle class="track" cx="120" cy="120" r="108" fill="none" stroke-width="14"/>
           <circle class="prog" id="t-prog" cx="120" cy="120" r="108" fill="none" stroke-width="14" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C}"/>
         </svg>

@@ -1,6 +1,6 @@
 # AK Planner
 
-Ứng dụng cá nhân quản lý công việc, thời gian tập trung và mục tiêu hằng ngày, theo phong cách glassmorphism tím – lavender.
+Ứng dụng cá nhân quản lý công việc, thời gian tập trung và mục tiêu hằng ngày, theo phong cách glassmorphism, tông xanh ô-liu ngành công an điểm vàng và đỏ.
 
 ## Tính năng
 
