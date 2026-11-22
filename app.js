@@ -244,19 +244,29 @@
 
   // ---------- Toast ----------
   let toastT;
-  function toast(msg, action) {
+  // Thông báo nổi: ô biểu tượng (xanh = thành công, vàng = nhắc nhở) + nội dung + nút hành động
+  const TOAST_WARN = /^(Không|Chọn|Nhập|Cần|Hãy|Chưa|Top 3 đã đủ|Tuần (này|trước) chưa)/;
+  function toast(msg, action, kind) {
     const el = $('#toast');
-    el.textContent = msg;
-    el.classList.toggle('has-act', !!action);
+    const type = kind || (TOAST_WARN.test(msg) ? 'warn' : action ? 'undo' : 'ok');
+    const icon = { ok: ic('check', 'stroke-width="3"'), warn: ic('alert', 'stroke-width="2.4"'), undo: ic('reset', 'stroke-width="2.4"') }[type];
+    const dur = action ? 5000 : type === 'warn' ? 3000 : 2400;
+    el.className = `toast t-${type}${action ? ' has-act' : ''}`;
+    el.innerHTML = `<span class="t-ic">${icon}</span><span class="t-msg"></span>`;
+    $('.t-msg', el).textContent = msg;
     if (action) {
       const b = document.createElement('button');
       b.className = 'toast-act'; b.textContent = action.label || 'Hoàn tác';
       b.onclick = () => { el.classList.remove('show'); clearTimeout(toastT); action.fn(); };
       el.append(b);
+      const bar = document.createElement('i');
+      bar.className = 't-bar'; bar.style.animationDuration = `${dur}ms`;
+      el.append(bar);
     }
+    void el.offsetWidth;
     el.classList.add('show');
     clearTimeout(toastT);
-    toastT = setTimeout(() => el.classList.remove('show'), action ? 5000 : 2200);
+    toastT = setTimeout(() => el.classList.remove('show'), dur);
   }
   function celebrate(msg) {
     toast(msg);
