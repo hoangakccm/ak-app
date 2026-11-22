@@ -9,7 +9,13 @@
 - **Vuốt trên việc**: vuốt phải để hoàn thành, vuốt trái để xóa (việc lặp lại: bỏ qua lần này). Mọi thao tác xóa/dời/hoàn thành đều có nút **Hoàn tác**.
 - **Top 3 hôm nay**: chọn 3 việc quan trọng nhất, ghim lên đầu trang chủ. Danh sách việc chia nhóm Quá hạn / Sáng / Chiều / Tối / Trong ngày / Đã xong.
 - **Uống nước** (đếm ly theo mục tiêu), **tâm trạng** 5 mức và **nhật ký** một dòng; buổi tối có **Tổng kết ngày** với 3 câu hỏi và tự thêm ưu tiên của ngày mai vào Top 3.
-- **Màn chào lần đầu**: hỏi tên, ảnh đại diện, mục tiêu đọc sách và uống nước.
+- **Màn chào lần đầu**: hỏi tên, ảnh đại diện, thói quen muốn rèn và mục tiêu đọc sách, uống nước.
+- **Tab Tiện ích** gom các công cụ dưới đây cùng Thống kê, Nhật ký và Cá nhân. Nút **+** thêm theo ngữ cảnh trang đang mở; **giữ nút +** để mở menu thêm nhanh.
+- **Thói quen**: chọn biểu tượng, màu, các ngày trong tuần, số lần mỗi ngày; chạm để đánh dấu trên trang chủ; chuỗi ngày liên tục, tỉ lệ 30 ngày, lịch 7 ngày.
+- **Lịch âm**: ngày âm trên từng ô lịch, can chi ngày/tháng/năm, lịch tháng, mùng 1 và rằm tới, ngày lễ dương lịch và âm lịch sắp tới (tính theo giờ Việt Nam, thuật toán thiên văn của Hồ Ngọc Đức).
+- **Ngày quan trọng**: sinh nhật, kỷ niệm, ngày giỗ, hạn chót; theo dương lịch hoặc âm lịch, lặp hằng năm, đếm ngược, tự tính số tuổi; hiện trên trang chủ khi còn ≤ 7 ngày.
+- **Thu chi**: ghi khoản chi/thu với nút số tiền nhanh, 10 nhóm chi tiêu, ngân sách tháng có cảnh báo, tổng hợp theo nhóm và theo ngày.
+- **Lịch trực**: chu kỳ ca (mẫu Ngày → Đêm → Nghỉ → Nghỉ, 24/48, hành chính…) tự xoay, đổi ca từng ngày; hiện ca trên trang chủ, trong Lịch và nhắc ca ngày mai.
 - **Lịch**: xem theo tuần, chấm báo số việc mỗi ngày.
 - **Tập trung (Pomodoro)**: bấm thẻ “Tập trung”, chọn 15/25/45/60 phút; vẫn đếm đúng khi chuyển app, có chuông khi hết giờ.
 - **Đọc mỗi ngày** (tab Đọc sách): 21 bài đọc ngắn tự biên soạn về phát triển bản thân, kỹ năng, kiến thức và đạo đức. Mỗi bài có châm ngôn, ý chính, việc “Thử ngay hôm nay” và ô ghi chú suy ngẫm. Đồng hồ đọc hướng tới mục tiêu 10 phút/ngày (đổi được), tự tạm dừng khi rời app hoặc 90 giây không thao tác. Có chuỗi ngày đọc, châm ngôn mỗi ngày, lưu bài, chỉnh cỡ chữ và thêm bài đọc của riêng bạn.
@@ -40,6 +46,7 @@ index.html            khung trang
 styles.css            giao diện (token màu, sáng/tối)
 app.js                toàn bộ logic
 readings.js           nội dung bài đọc và châm ngôn
+lunar.js              chuyển đổi âm lịch, can chi, ngày lễ
 sw.js                 service worker (offline)
 manifest.webmanifest  thông tin PWA
 icons/                biểu tượng app
