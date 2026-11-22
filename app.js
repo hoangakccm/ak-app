@@ -97,7 +97,7 @@
     return { h: Math.floor(m / 60), m: m % 60 };
   }
 
-  const APP_VERSION = '1.14 · lịch trực theo tuần';
+  const APP_VERSION = '1.15 · chiến tích vuốt ảnh';
 
   // ---------- State ----------
   const STORE = 'ak-planner-v1';
@@ -841,15 +841,51 @@
   }
   const hm = (ts) => { const d = new Date(ts); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
   function locketHTML() {
-    const today = keyOf(), list = winsOn(today), w = list[list.length - 1], st = winStreak();
+    const today = keyOf(), list = winsOn(today).slice().reverse(), w = list[0], st = winStreak();
     const input = '<input type="file" accept="image/*" class="sr-only" data-win-input>';
     return `<section class="locket">
       <div class="section-head"><h3 class="h-ic"><span class="lk-ic">${ic('wins')}</span>Chiến tích hôm nay</h3><button class="link" data-act="go" data-to="wins">${st ? `🔥 ${st} ngày` : 'Xem tất cả'} ${ic('chevR')}</button></div>
-      ${w ? `<div class="lk-frame" style="${winRatioStyle(w)}"><button class="lk-photo" data-act="win-view" data-id="${w.id}" aria-label="Xem ảnh chiến tích"><img data-photo="${w.id}" alt="${esc(w.caption || 'Chiến tích hôm nay')}">
-          <span class="lk-time">${hm(w.ts)}</span>${list.length > 1 ? `<span class="lk-n">${list.length} ảnh</span>` : ''}${w.caption ? `<span class="lk-cap">${esc(w.caption)}</span>` : ''}</button>
-          <label class="lk-add" aria-label="Thêm ảnh chiến tích">${ic('plus', 'stroke-width="2.6"')}${input}</label></div>`
+      ${w ? `<div class="lk-frame" style="${winRatioStyle(w)}">
+          <div class="lk-track" data-lk-track>${list.map((x, i) => `<button class="lk-photo" data-act="win-view" data-id="${x.id}" aria-label="Ảnh chiến tích ${i + 1}/${list.length}${x.caption ? `: ${esc(x.caption)}` : ''}"><img data-photo="${x.id}" alt="">
+            <span class="lk-time">${hm(x.ts)}</span>${x.caption ? `<span class="lk-cap">${esc(x.caption)}</span>` : ''}</button>`).join('')}</div>
+          ${list.length > 1 ? `<span class="lk-n" data-lk-n>1/${list.length}</span>` : ''}
+          <label class="lk-add" aria-label="Thêm ảnh chiến tích">${ic('plus', 'stroke-width="2.6"')}${input}</label></div>
+        ${list.length > 1 ? `<div class="lk-dots" data-lk-dots aria-hidden="true">${list.map((_, i) => `<i class="${i === 0 ? 'on' : ''}"></i>`).join('')}</div>` : ''}`
         : `<label class="lk-empty glass"><span class="lk-cam">${ic('camera')}</span><b>Chụp ảnh chiến tích hôm nay</b><span>Một khoảnh khắc khiến bạn tự hào: xong việc khó, buổi tập, cuốn sách, bữa cơm gia đình…</span>${input}</label>`}
     </section>`;
+  }
+  // Băng ảnh vuốt ngang: cập nhật "1/2" và chấm, nhớ ảnh đang xem khi trang vẽ lại
+  function bindLocket(root) {
+    const track = $('[data-lk-track]', root);
+    if (!track) return;
+    const n = track.children.length, pill = $('[data-lk-n]', root), dots = $$('[data-lk-dots] i', root), frame = track.parentElement;
+    const slides = [...track.children];
+    const show = (i) => {
+      if (pill) pill.textContent = `${i + 1}/${n}`;
+      dots.forEach((d, j) => d.classList.toggle('on', j === i));
+      frame.classList.toggle('lk-light', !!(slides[i] && slides[i].classList.contains('lk-light')));
+    };
+    // Ảnh sáng thì nhãn kính dùng chữ tối để luôn dễ đọc
+    slides.forEach((sl, i) => {
+      const img = $('img', sl);
+      img.addEventListener('load', () => {
+        try {
+          const c = document.createElement('canvas'); c.width = c.height = 12;
+          const g = c.getContext('2d'); g.drawImage(img, 0, 0, 12, 12);
+          const d = g.getImageData(0, 0, 12, 12).data;
+          let sum = 0;
+          for (let k = 0; k < d.length; k += 4) sum += 0.2126 * d[k] + 0.7152 * d[k + 1] + 0.0722 * d[k + 2];
+          sl.classList.toggle('lk-light', sum / (d.length / 4) / 255 > 0.68);
+          if (i === (ui.lkIdx || 0)) show(i);
+        } catch { /* bỏ qua nếu không đọc được điểm ảnh */ }
+      }, { once: true });
+    });
+    const start = Math.min(ui.lkIdx || 0, n - 1);
+    if (start > 0) requestAnimationFrame(() => { track.style.scrollBehavior = 'auto'; track.scrollLeft = start * track.clientWidth; track.style.scrollBehavior = ''; show(start); });
+    track.addEventListener('scroll', () => {
+      const i = Math.min(n - 1, Math.max(0, Math.round(track.scrollLeft / track.clientWidth)));
+      if (i !== ui.lkIdx) { ui.lkIdx = i; show(i); }
+    }, { passive: true });
   }
   const WIN_RATIOS = [['1:1', 'Vuông', 1], ['5:4', 'Ngang', 5 / 4], ['4:5', 'Dọc', 4 / 5], ['16:9', 'Rộng', 16 / 9]];
   const winRatioStyle = (w) => { const r = WIN_RATIOS.find((x) => x[0] === w.ratio) || WIN_RATIOS[1]; return `--r:${r[2]};--ar:${r[0].replace(':', ' / ')}`; };
@@ -956,6 +992,7 @@
         const id = uid();
         try { await PhotoDB.put(id, blob); } catch { toast('Không lưu được ảnh, có thể bộ nhớ đã đầy'); return; }
         photoURLs[id] = URL.createObjectURL(blob);
+        ui.lkIdx = 0;
         const first = !winsOn(keyOf()).length;
         S.wins.push({ id, date: keyOf(), caption: f.cap.value.trim(), ts: Date.now(), ratio: ratio[0] });
         save(); closeSheet(); render();
@@ -1724,6 +1761,7 @@
       requestAnimationFrame(() => bars.forEach((el) => { el.style.width = el.dataset.w + '%'; }));
     } else bars.forEach((el) => { el.style.transition = 'none'; el.style.width = el.dataset.w + '%'; });
     hydratePhotos(v);
+    bindLocket(v);
     const activeTab = MAIN_TABS.includes(ui.tab) ? ui.tab : ui.prevTab;
     $$('.tab').forEach((b) => {
       b.classList.toggle('active', b.dataset.tab === activeTab);
