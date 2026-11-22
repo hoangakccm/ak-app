@@ -55,6 +55,7 @@
     wins: '<path d="M4 8h3l2-3h6l2 3h3v12H4z"/><path d="M12 17.6s-3.2-1.9-3.2-4.1a1.7 1.7 0 0 1 3.2-.9 1.7 1.7 0 0 1 3.2.9c0 2.2-3.2 4.1-3.2 4.1z"/>',
     lock: '<rect x="5" y="11" width="14" height="9.5" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
     share: '<path d="M12 15V3.5M7.5 8 12 3.5 16.5 8"/><path d="M5 12v7.5h14V12"/>',
+    fridge: '<rect x="5.5" y="2.5" width="13" height="19" rx="2.6"/><path d="M5.5 9.5h13M8.8 5.5v2M8.8 12.5v3.5"/>',
     pin: '<path d="M9 3.5h6l-1 5.5 3.2 3.2v2H6.8v-2L10 9z"/><path d="M12 14.2v6.3"/>',
     chevU: '<path d="m6 15 6-6 6 6"/>',
     chevD: '<path d="m6 9 6 6 6-6"/>',
@@ -100,9 +101,9 @@
     return { h: Math.floor(m / 60), m: m % 60 };
   }
 
-  const APP_VERSION = '1.17';
+  const APP_VERSION = '1.18';
   const APP_DATE = '22/11/2026';
-  const APP_NOTE = 'Tùy chỉnh trang chủ, ghim tiện ích, thanh tiêu đề thu gọn, chuyển trang mượt';
+  const APP_NOTE = 'Thêm tiện ích Tủ lạnh: theo dõi hạn dùng, danh sách cần mua';
   let swReg = null;
 
   // ---------- State ----------
@@ -170,6 +171,9 @@
     S.letters = Array.isArray(S.letters) ? S.letters : [];
     S.wins = Array.isArray(S.wins) ? S.wins : [];
     S.pins = Array.isArray(S.pins) ? S.pins : ['shift', 'money', 'events', 'lunar'];
+    S.fridge = Array.isArray(S.fridge) ? S.fridge : [];
+    S.shop = Array.isArray(S.shop) ? S.shop : [];
+    S.fridgeLog = Array.isArray(S.fridgeLog) ? S.fridgeLog : [];
   }
   normalize();
   const save = () => { try { localStorage.setItem(STORE, JSON.stringify(S)); } catch { toast('Không lưu được dữ liệu'); } };
@@ -1157,6 +1161,7 @@
       ...evs.map(({ e, next }) => row('gift', esc(e.title), next === k ? 'Hôm nay' : cdText(daysBetween(k, next)).replace(/^./, (c) => c.toUpperCase()))),
       ...duty.map((x) => row('duty', esc(x.label), `${x.time}${x.nextDay ? ' · rạng sáng hôm sau' : ''}`)),
       row('list', list.length ? `${list.length} việc hôm nay` : 'Chưa có việc nào hôm nay', list.length ? (top ? `${top} việc trong Top 3` : 'Chạm để chọn Top 3') : 'Chạm để thêm việc', list.length ? (top ? '' : 'top3') : 'task'),
+      fUrgent().length ? row('fridge', `${fUrgent().length} món trong tủ lạnh cần dùng sớm`, fUrgent().slice(0, 3).map((x) => esc(x.name)).join(', ')) : '',
       habitsDue ? row('sprout', `${habitsDue} thói quen cần giữ`, 'Mỗi ngày một chút') : '',
       row('book', `${S.readGoal} phút đọc sách`, featuredLesson() ? esc(featuredLesson().title) : ''),
     ].join('');
@@ -1193,6 +1198,171 @@
     document.body.classList.add('reading');
   }
 
+  // ================= Tủ lạnh =================
+  const F_ZONES = { cool: ['Ngăn mát', '❄️'], freeze: ['Ngăn đông', '🧊'], door: ['Cánh tủ', '🚪'], pantry: ['Kệ bếp', '🧺'] };
+  // [tên, biểu tượng, số ngày dùng được ước tính theo ngăn: mát, đông, cánh, kệ (0 = không gợi ý)]
+  const F_CATS = {
+    veg: ['Rau củ', '🥬', [5, 60, 5, 3]], fruit: ['Trái cây', '🍎', [7, 60, 7, 4]], meat: ['Thịt', '🥩', [2, 90, 2, 0]],
+    fish: ['Cá, hải sản', '🐟', [1, 90, 1, 0]], egg: ['Trứng', '🥚', [21, 0, 21, 10]], dairy: ['Sữa, đồ uống', '🥛', [7, 30, 7, 0]],
+    cooked: ['Đồ ăn chín', '🍲', [3, 30, 3, 0]], sauce: ['Gia vị, nước chấm', '🧂', [90, 0, 90, 90]], frozen: ['Đồ đông lạnh', '🧊', [2, 90, 2, 0]],
+    other: ['Khác', '📦', [7, 30, 7, 7]],
+  };
+  const F_ZONE_IDX = { cool: 0, freeze: 1, door: 2, pantry: 3 };
+  const F_UNITS = ['cái', 'quả', 'bó', 'củ', 'hộp', 'gói', 'chai', 'lon', 'lạng', 'kg', 'con', 'bìa'];
+  const F_TPL = [
+    ['Rau muống', '🥬', 'veg', 'bó', 'cool'], ['Rau cải', '🥬', 'veg', 'bó', 'cool'], ['Cà chua', '🍅', 'veg', 'quả', 'cool'],
+    ['Hành, tỏi', '🧄', 'veg', 'củ', 'pantry'], ['Thịt lợn', '🥩', 'meat', 'lạng', 'cool'], ['Thịt bò', '🥩', 'meat', 'lạng', 'cool'],
+    ['Thịt gà', '🍗', 'meat', 'kg', 'cool'], ['Cá', '🐟', 'fish', 'con', 'cool'], ['Tôm', '🦐', 'fish', 'lạng', 'freeze'],
+    ['Trứng', '🥚', 'egg', 'quả', 'door'], ['Sữa tươi', '🥛', 'dairy', 'hộp', 'door'], ['Sữa chua', '🥛', 'dairy', 'hộp', 'cool'],
+    ['Đậu phụ', '🧈', 'veg', 'bìa', 'cool'], ['Giò chả', '🌭', 'cooked', 'cái', 'cool'], ['Thức ăn thừa', '🍲', 'cooked', 'hộp', 'cool'],
+    ['Hoa quả', '🍎', 'fruit', 'kg', 'cool'], ['Bia', '🍺', 'dairy', 'lon', 'door'], ['Nước ngọt', '🥤', 'dairy', 'chai', 'door'],
+  ];
+  const fShelf = (cat, zone) => (F_CATS[cat] || F_CATS.other)[2][F_ZONE_IDX[zone] || 0] || 0;
+  const fLeft = (x) => (x.exp ? daysBetween(keyOf(), x.exp) : null);
+  const fStatus = (x) => { const l = fLeft(x); return l === null ? 'none' : l < 0 ? 'bad' : l <= 1 ? 'warn' : l <= 3 ? 'soon' : 'ok'; };
+  const fLabel = (x) => {
+    const l = fLeft(x);
+    if (l === null) { const a = daysBetween(x.added || keyOf(), keyOf()); return a ? `Cho vào ${a} ngày trước` : 'Cho vào hôm nay'; }
+    return l < 0 ? `Quá hạn ${-l} ngày` : l === 0 ? 'Hết hạn hôm nay' : l === 1 ? 'Còn 1 ngày' : `Còn ${l} ngày`;
+  };
+  const fSort = (a, b) => (a.exp || '9999').localeCompare(b.exp || '9999') || a.name.localeCompare(b.name);
+  const fUrgent = () => S.fridge.filter((x) => ['bad', 'warn'].includes(fStatus(x))).sort(fSort);
+  const fGuess = (name) => F_TPL.find((t) => name.toLowerCase().includes(t[0].toLowerCase().split(',')[0])) || null;
+  const fNum = (n) => String(+(+n).toFixed(2)).replace('.', ',');
+
+  function fridgeAlertHTML() {
+    const u = fUrgent();
+    if (!u.length) return '';
+    const bad = u.filter((x) => fStatus(x) === 'bad').length;
+    return `<button class="soon-i glass fridge-alert ${bad ? 'hot' : ''}" data-act="go" data-to="fridge"><span class="soon-e">${ic('fridge')}</span><span><b>Tủ lạnh: ${u.length} món cần dùng sớm</b><span>${u.slice(0, 3).map((x) => `${esc(x.name)} (${fLabel(x).toLowerCase()})`).join(', ')}${u.length > 3 ? '…' : ''}</span></span></button>`;
+  }
+
+  function viewFridge() {
+    const zone = ui.fZone || 'all';
+    const list = S.fridge.filter((x) => zone === 'all' || x.zone === zone).sort(fSort);
+    const cnt = (st) => S.fridge.filter((x) => fStatus(x) === st).length;
+    const mk = keyOf().slice(0, 7), logM = S.fridgeLog.filter((l) => l.date.slice(0, 7) === mk);
+    const used = logM.filter((l) => l.type === 'used').length, waste = logM.filter((l) => l.type === 'waste').length;
+    const urgent = fUrgent();
+    const shopOpen = S.shop.filter((x) => !x.done), shopDone = S.shop.filter((x) => x.done);
+    return `${subHead('Tủ lạnh', 'Biết trong tủ còn gì, dùng trước đồ sắp hết hạn.')}
+      <div class="dw-sum glass f-sum"><div><b>${S.fridge.length}</b><span>món trong tủ</span></div><div class="${cnt('warn') + cnt('soon') ? 'w' : ''}"><b>${cnt('warn') + cnt('soon')}</b><span>sắp hết hạn</span></div><div class="${cnt('bad') ? 'b' : ''}"><b>${cnt('bad')}</b><span>đã quá hạn</span></div></div>
+      ${urgent.length ? `<div class="f-tip">${ic('alert')}<span><b>Ưu tiên dùng trước:</b> ${urgent.map((x) => esc(x.name)).join(', ')}</span></div>` : ''}
+      <div class="chip-row">${[['all', 'Tất cả', '🏠'], ...Object.entries(F_ZONES).map(([id, [n, e]]) => [id, n, e])].map(([id, n, e]) => {
+        const c = id === 'all' ? S.fridge.length : S.fridge.filter((x) => x.zone === id).length;
+        return `<button class="chip ${zone === id ? 'on' : ''}" data-act="f-zone" data-z="${id}">${e} ${n}${c ? ` · ${c}` : ''}</button>`;
+      }).join('')}</div>
+      ${list.length ? `<div class="f-list">${list.map((x) => {
+        const st = fStatus(x);
+        return `<div class="f-item glass st-${st}">
+          <button class="f-main" data-act="f-edit" data-id="${x.id}">
+            <span class="f-emo">${x.emoji || '📦'}</span>
+            <span class="f-info"><b>${esc(x.name)}</b><span>${fNum(x.qty)} ${esc(x.unit)} · ${F_ZONES[x.zone] ? F_ZONES[x.zone][0] : ''}</span></span>
+            <span class="f-badge">${fLabel(x)}</span>
+          </button>
+          <button class="f-use" data-act="f-use" data-id="${x.id}" aria-label="Dùng bớt 1 ${esc(x.unit)} ${esc(x.name)}">${ic('minus', 'stroke-width="2.6"')}</button>
+        </div>`;
+      }).join('')}</div>`
+      : `<div class="empty glass"><div class="big">🧊</div>${S.fridge.length ? 'Ngăn này đang trống.' : 'Tủ lạnh chưa có gì.<br>Thêm đồ khi đi chợ về để app nhắc trước khi hết hạn.'}</div>`}
+      <button class="btn btn-primary btn-block" data-act="f-new" style="margin:14px 0 6px">${ic('plus')} Thêm đồ vào tủ</button>
+      ${logM.length ? `<p class="footnote">Tháng này: dùng hết ${used} món${waste ? ` · bỏ phí ${waste} món` : ''}</p>` : ''}
+
+      <div class="section-head" style="margin-top:22px"><h3>Cần mua</h3>${shopDone.length ? `<button class="link" data-act="shop-clear">Xóa đã mua</button>` : ''}</div>
+      <form class="shop-add" id="shop-add" autocomplete="off"><input class="input" name="item" maxlength="60" placeholder="Thêm món cần mua…" enterkeyhint="done"><button class="btn btn-ghost" type="submit" aria-label="Thêm">${ic('plus')}</button></form>
+      ${S.shop.length ? `<div class="shop glass">${[...shopOpen, ...shopDone].map((x) => `<button class="sub ${x.done ? 'on' : ''}" data-act="shop-tg" data-id="${x.id}"><span class="sub-c">${ic('check', 'stroke-width="3.2"')}</span>${esc(x.name)}</button>`).join('')}</div>` : '<p class="page-sub" style="margin:0 4px">Danh sách trống. Khi dùng hết một món, app sẽ gợi ý thêm vào đây.</p>'}
+      ${shopDone.length ? `<button class="btn btn-ghost btn-block" data-act="shop-to-fridge" style="margin-top:12px">${ic('fridge')} Cho ${shopDone.length} món đã mua vào tủ</button>` : ''}
+      <p class="footnote">Hạn dùng gợi ý chỉ là ước tính chung. Hãy xem hạn in trên bao bì nếu có.</p>`;
+  }
+
+  function fridgeSheet(item, preset) {
+    const today = keyOf();
+    const d = item ? { ...item } : { name: '', emoji: '📦', cat: 'other', zone: 'cool', qty: 1, unit: 'cái', added: today, exp: '', autoExp: true, ...(preset || {}) };
+    if (!item) { const sh0 = fShelf(d.cat, d.zone); d.exp = sh0 ? addDays(today, sh0) : ''; }
+    openSheet(`<h3>${item ? 'Sửa đồ trong tủ' : 'Thêm đồ vào tủ'}</h3>
+      ${item ? '' : `<div class="chip-row f-tpl" id="ftpl">${F_TPL.map((t, i) => `<button type="button" class="chip" data-i="${i}">${t[1]} ${t[0]}</button>`).join('')}</div>`}
+      <form id="ff" autocomplete="off">
+        <div class="f-name"><button type="button" class="f-emo big" id="femo" aria-label="Đổi biểu tượng">${d.emoji}</button><input class="input" name="fname" maxlength="60" required placeholder="Tên món, ví dụ: Thịt lợn" value="${esc(d.name)}"></div>
+        <div class="field"><span>Loại</span><div class="chips sm" id="fcat">${Object.entries(F_CATS).map(([id, [n, e]]) => `<button type="button" class="chip ${d.cat === id ? 'on' : ''}" data-v="${id}">${e} ${n}</button>`).join('')}</div></div>
+        <div class="field"><span>Để ở</span><div class="seg" id="fzone">${Object.entries(F_ZONES).map(([id, [n]]) => `<button type="button" data-v="${id}" class="${d.zone === id ? 'on' : ''}">${n}</button>`).join('')}</div></div>
+        <div class="field"><span>Số lượng</span><div class="f-qty"><div class="stepper"><button type="button" data-s="-1" aria-label="Bớt">${ic('minus')}</button><b id="fq">${fNum(d.qty)}</b><button type="button" data-s="1" aria-label="Thêm">${ic('plus')}</button></div>
+          <div class="chips sm" id="funit">${F_UNITS.map((u) => `<button type="button" class="chip ${d.unit === u ? 'on' : ''}" data-v="${u}">${u}</button>`).join('')}</div></div></div>
+        <div class="field"><span>Hạn dùng</span>
+          <div class="chips sm" id="fexp">${[[1, '+1 ngày'], [3, '+3 ngày'], [7, '+1 tuần'], [30, '+1 tháng'], [0, 'Không hạn']].map(([n, l]) => `<button type="button" class="chip" data-n="${n}">${l}</button>`).join('')}</div>
+          <input class="input" type="date" name="fexp" value="${d.exp}" style="margin-top:10px">
+          <p class="footnote" id="fhint" style="text-align:left;margin:8px 4px 0"></p></div>
+        <button class="btn btn-primary btn-block" type="submit">${item ? 'Lưu thay đổi' : `${ic('plus')} Cho vào tủ`}</button>
+        ${item ? `<div class="f-end"><button type="button" class="btn btn-ghost" data-end="used">${ic('check')} Đã dùng hết</button><button type="button" class="btn btn-danger" data-end="waste">${ic('trash')} Bỏ đi (hỏng)</button></div>` : ''}
+      </form>`, (sh) => {
+      const f = $('#ff', sh);
+      let auto = !item;
+      const hint = () => {
+        const n = fShelf(d.cat, d.zone);
+        $('#fhint', sh).textContent = f.fexp.value
+          ? `Hết hạn ${WD[dateOf(f.fexp.value).getDay()]}, ${fmtDM(f.fexp.value)} · ${fLabel({ exp: f.fexp.value }).toLowerCase()}${n ? ` · gợi ý cho ${F_CATS[d.cat][0].toLowerCase()} ở ${F_ZONES[d.zone][0].toLowerCase()}: ${n} ngày` : ''}`
+          : 'Không đặt hạn dùng.';
+      };
+      const autoExp = () => { if (!auto) return; const n = fShelf(d.cat, d.zone); f.fexp.value = n ? addDays(today, n) : ''; hint(); };
+      const group = (sel, key, after) => $(sel, sh).addEventListener('click', (e) => {
+        const b = e.target.closest('button'); if (!b) return;
+        d[key] = b.dataset.v; $$(`${sel} button`, sh).forEach((x) => x.classList.toggle('on', x === b)); after && after();
+      });
+      group('#fcat', 'cat', () => { if (d.emoji === '📦' || Object.values(F_CATS).some((c) => c[1] === d.emoji)) { d.emoji = F_CATS[d.cat][1]; $('#femo', sh).textContent = d.emoji; } autoExp(); });
+      group('#fzone', 'zone', autoExp);
+      group('#funit', 'unit');
+      $('.stepper', sh).addEventListener('click', (e) => {
+        const b = e.target.closest('[data-s]'); if (!b) return;
+        const step = ['kg', 'lạng'].includes(d.unit) ? 0.5 : 1;
+        d.qty = Math.max(step, Math.round((+d.qty + step * +b.dataset.s) * 100) / 100); $('#fq', sh).textContent = fNum(d.qty);
+      });
+      $('#fexp', sh).addEventListener('click', (e) => {
+        const b = e.target.closest('[data-n]'); if (!b) return;
+        auto = false; const n = +b.dataset.n; f.fexp.value = n ? addDays(today, n) : ''; hint();
+      });
+      f.fexp.addEventListener('change', () => { auto = false; hint(); });
+      $('#femo', sh).addEventListener('click', () => {
+        const opts = [...new Set([...F_TPL.map((t) => t[1]), ...Object.values(F_CATS).map((c) => c[1])])];
+        d.emoji = opts[(opts.indexOf(d.emoji) + 1) % opts.length]; $('#femo', sh).textContent = d.emoji;
+      });
+      const tpl = $('#ftpl', sh);
+      if (tpl) tpl.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-i]'); if (!b) return;
+        const [n, emo, cat, unit, zone] = F_TPL[+b.dataset.i];
+        Object.assign(d, { name: n, emoji: emo, cat, unit, zone });
+        f.fname.value = n; $('#femo', sh).textContent = emo;
+        $$('#fcat button', sh).forEach((x) => x.classList.toggle('on', x.dataset.v === cat));
+        $$('#fzone button', sh).forEach((x) => x.classList.toggle('on', x.dataset.v === zone));
+        $$('#funit button', sh).forEach((x) => x.classList.toggle('on', x.dataset.v === unit));
+        $$('#ftpl button', sh).forEach((x) => x.classList.toggle('on', x === b));
+        auto = true; autoExp();
+      });
+      hint();
+      sh.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-end]'); if (!b || !item) return;
+        fRemove(item, b.dataset.end); closeSheet();
+      });
+      f.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const name = f.fname.value.trim(); if (!name) return;
+        const data = { name, emoji: d.emoji, cat: d.cat, zone: d.zone, qty: d.qty, unit: d.unit, exp: f.fexp.value || '' };
+        if (item) Object.assign(item, data); else S.fridge.push({ id: uid(), added: today, ...data });
+        save(); closeSheet(); render();
+        toast(item ? 'Đã lưu' : `Đã cho ${name} vào ${F_ZONES[d.zone][0].toLowerCase()}${data.exp ? ` · ${fLabel(data).toLowerCase()}` : ''}`);
+      });
+      if (!item) setTimeout(() => f.fname.focus(), 320);
+    });
+  }
+
+  function fRemove(x, type) {
+    const idx = S.fridge.indexOf(x);
+    if (idx < 0) return;
+    S.fridge.splice(idx, 1);
+    S.fridgeLog.push({ name: x.name, type, date: keyOf() });
+    save(); render();
+    const inShop = S.shop.some((y) => !y.done && y.name.toLowerCase() === x.name.toLowerCase());
+    toast(type === 'waste' ? `Đã bỏ ${x.name}` : `Đã dùng hết ${x.name}`, inShop ? { label: 'Hoàn tác', fn: () => { S.fridge.splice(idx, 0, x); S.fridgeLog.pop(); save(); render(); } }
+      : { label: 'Mua thêm', fn: () => { S.shop.push({ id: uid(), name: x.name, done: false }); save(); render(); toast(`Đã thêm ${x.name} vào danh sách cần mua`); } });
+  }
+
   // ---------- Views ----------
   function viewHome() {
     const today = keyOf();
@@ -1201,7 +1371,7 @@
     const done = list.filter((t) => t.done).length;
     const pct = total ? Math.round((done / total) * 100) : 0;
     const f = fmtDur(focusOn(today) + runningElapsed());
-    const hasNotif = upcoming().length > 0 || overdueList().length > 0 || readLeftMin() > 0 || upcomingEvents(3).length > 0 || dutyNotes().some((x) => !x.quiet) || dueLetters().length > 0;
+    const hasNotif = upcoming().length > 0 || overdueList().length > 0 || readLeftMin() > 0 || upcomingEvents(3).length > 0 || dutyNotes().some((x) => !x.quiet) || dueLetters().length > 0 || fUrgent().length > 0;
 
     let title = 'Bắt đầu thôi!', sub = 'Thêm việc đầu tiên cho hôm nay nhé.';
     if (total) {
@@ -1281,6 +1451,7 @@
         (() => { const L = dueLetters()[0]; return L ? `<button class="prompt glass letter-due" data-act="letter-open" data-id="${L.id}"><span class="pi letter">${ic('envelope')}</span><span class="pt"><b>Bạn có thư từ quá khứ! 💌</b><span>Viết ngày ${fmtDMY(L.created)} · chạm để mở</span></span>${ic('chevR')}</button>` : ''; })(),
         (() => { const r = dutyReminder(); return r ? `<button class="prompt glass" data-act="duty-week" data-mon="${r.mon}"><span class="pi duty">${ic('duty')}</span><span class="pt"><b>${r.title}</b><span>${r.sub}</span></span>${ic('chevR')}</button>` : ''; })(),
         dutyNowCard(),
+        fridgeAlertHTML(),
       ].join(''),
       habits: habitStripHTML(),
       wins: locketHTML(),
@@ -1598,6 +1769,7 @@
       ['letters', 'Thư tương lai', 'envelope', '', dueL ? `${dueL} thư đã đến ngày mở` : sealedL ? `${sealedL} thư đang niêm phong` : 'Viết cho mình mai sau'],
       ['habits', 'Thói quen', 'sprout', '', S.habits.length ? `${doneH}/${dueH.length} hôm nay` : 'Tạo thói quen đầu tiên'],
       ['money', 'Thu chi', 'wallet', '', S.money.length ? `Hôm nay ${fmtShort(outToday)} · Tháng ${fmtShort(outMonth)}` : 'Ghi chi tiêu nhanh'],
+      ['fridge', 'Tủ lạnh', 'fridge', '', (() => { const u = fUrgent().length; return u ? `${u} món cần dùng sớm` : S.fridge.length ? `${S.fridge.length} món trong tủ` : 'Theo dõi hạn dùng đồ ăn'; })()],
       ['events', 'Ngày quan trọng', 'gift', '', upEv ? `${esc(upEv.e.title)} · ${cdText(daysBetween(k, upEv.next))}` : 'Sinh nhật, ngày giỗ…'],
       ['lunar', 'Lịch âm', 'moonstar', '', `${l.day}/${l.month} năm ${LN.canChiYear(l.year)}`],
       ['shift', 'Lịch trực', 'duty', '', !S.shift.on ? 'Chưa bật' : ds.length ? `Hôm nay: ${ds.map((x) => x.short).join(', ')}` : 'Hôm nay không có ca'],
@@ -1847,7 +2019,7 @@
       <p class="footnote">Dữ liệu được lưu riêng trên thiết bị này.</p>`;
   }
 
-  const VIEWS = { home: viewHome, calendar: viewCalendar, read: viewRead, tools: viewTools, analytics: viewAnalytics, profile: viewProfile, journal: viewJournal, habits: viewHabits, events: viewEvents, lunar: viewLunar, money: viewMoney, shift: viewShift, wins: viewWins, letters: viewLetters };
+  const VIEWS = { home: viewHome, calendar: viewCalendar, read: viewRead, tools: viewTools, analytics: viewAnalytics, profile: viewProfile, journal: viewJournal, habits: viewHabits, events: viewEvents, lunar: viewLunar, money: viewMoney, shift: viewShift, wins: viewWins, letters: viewLetters, fridge: viewFridge };
   const MAIN_TABS = ['home', 'calendar', 'read', 'tools'];
 
   function render(animate = false) {
@@ -1908,7 +2080,7 @@
   fab.addEventListener('contextmenu', (e) => e.preventDefault());
   fab.addEventListener('click', () => {
     if (fabLong) { fabLong = false; return; }
-    const ctx = { money: () => moneySheet(), habits: () => habitSheet(), events: () => eventSheet(), tools: () => quickAddSheet(), letters: () => letterSheet(), shift: S.shift.on ? () => dutySheet() : null }[ui.tab];
+    const ctx = { money: () => moneySheet(), habits: () => habitSheet(), events: () => eventSheet(), tools: () => quickAddSheet(), letters: () => letterSheet(), fridge: () => fridgeSheet(), shift: S.shift.on ? () => dutySheet() : null }[ui.tab];
     ctx ? ctx() : taskSheet();
   });
 
@@ -2227,11 +2399,11 @@
   }
 
   function quickAddSheet() {
-    const items = [['task', 'Công việc', 'list'], ['money', 'Khoản chi / thu', 'plus'], ['habit', 'Thói quen', 'repeat'], ['event', 'Ngày quan trọng', 'gift'], ['journal', 'Nhật ký hôm nay', 'journal'], ['letter', 'Thư gửi tương lai', 'envelope']];
+    const items = [['task', 'Công việc', 'list'], ['money', 'Khoản chi / thu', 'plus'], ['habit', 'Thói quen', 'repeat'], ['event', 'Ngày quan trọng', 'gift'], ['journal', 'Nhật ký hôm nay', 'journal'], ['letter', 'Thư gửi tương lai', 'envelope'], ['fridge', 'Đồ vào tủ lạnh', 'fridge']];
     openSheet(`<h3>Thêm nhanh</h3>${items.map(([v, l, i]) => `<button class="menu-item" data-q="${v}"><span class="mi">${ic(i)}</span>${l}</button>`).join('')}`, (sh) => {
       sh.addEventListener('click', (e) => {
         const b = e.target.closest('[data-q]'); if (!b) return;
-        ({ task: () => taskSheet(), money: () => moneySheet(), habit: () => habitSheet(), event: () => eventSheet(), journal: () => reviewSheet(), letter: () => letterSheet() })[b.dataset.q]();
+        ({ task: () => taskSheet(), money: () => moneySheet(), habit: () => habitSheet(), event: () => eventSheet(), journal: () => reviewSheet(), letter: () => letterSheet(), fridge: () => fridgeSheet() })[b.dataset.q]();
       });
     });
   }
@@ -2773,15 +2945,16 @@
 
   function notifSheet() {
     const od = overdueList(), up = upcoming(), rl = readLeftMin(), evs = upcomingEvents(3);
-    const dn = dutyNotes(), dl = dueLetters();
+    const dn = dutyNotes(), dl = dueLetters(), fu = fUrgent();
     const item = (t, kind) => `<div class="notif">
       <span class="mi" style="${kind === 'od' ? 'background:rgba(255,110,110,.12);color:#f05454' : 'background:var(--primary-soft);color:var(--primary)'}">${ic(kind === 'od' ? 'alert' : 'clock')}</span>
       <div><b>${esc(t.title)}</b><span>${kind === 'od' ? 'Quá hạn · ' : 'Sắp tới · '}${dayLabel(t.date)}, ${fmtTime(t.time)}</span></div></div>`;
     openSheet(`
       <h3>Thông báo</h3>
-      ${od.length || up.length || rl || evs.length || dn.length || dl.length ? `<div class="list glass" style="padding:4px 12px">${dl.map((L) => `<button class="notif" style="width:100%;text-align:left" data-letter="${L.id}"><span class="mi" style="background:var(--primary-soft);color:var(--primary)">${ic('envelope')}</span><div><b>Thư từ quá khứ đã đến ngày mở</b><span>Viết ngày ${fmtDMY(L.created)}</span></div></button>`).join('')}${dn.map((x) => `<button class="notif" style="width:100%;text-align:left" ${x.week ? `data-duty-week="${x.week}"` : x.entry ? `data-duty-entry="${x.entry}"` : 'data-duty-go'}><span class="mi" style="background:color-mix(in srgb, ${x.color} 16%, transparent);color:${x.color};font-size:13px;font-weight:800">${x.badge}</span><div><b>${esc(x.title)}</b><span>${esc(x.sub)}</span></div></button>`).join('')}${evs.map(({ e, next }) => `<div class="notif"><span class="mi" style="background:rgba(214,48,58,.1)">${EV_TYPES[e.type][1]}</span><div><b>${esc(e.title)}</b><span>${daysBetween(keyOf(), next) === 0 ? 'Hôm nay' : daysBetween(keyOf(), next) === 1 ? 'Ngày mai' : `Còn ${daysBetween(keyOf(), next)} ngày`} · ${fmtDM(next)}</span></div></div>`).join('')}${rl ? `<button class="notif" data-open-read style="width:100%;text-align:left"><span class="mi" style="background:color-mix(in srgb, var(--c-study) 14%, transparent);color:var(--c-study)">${ic('book')}</span><div><b>Còn ${rl} phút đọc sách hôm nay</b><span>Chạm để đọc ngay · giữ chuỗi ${readStreak()} ngày</span></div></button>` : ''}${up.map((t) => item(t, 'up')).join('')}${od.map((t) => item(t, 'od')).join('')}</div>` : '<div class="empty"><div class="big">🔔</div>Bạn không có thông báo nào.<br>Mọi thứ đều đang đúng tiến độ!</div>'}`, (sh) => {
+      ${od.length || up.length || rl || evs.length || dn.length || dl.length || fu.length ? `<div class="list glass" style="padding:4px 12px">${fu.length ? `<button class="notif" style="width:100%;text-align:left" data-fridge><span class="mi" style="background:var(--primary-soft);color:var(--primary)">${ic('fridge')}</span><div><b>Tủ lạnh: ${fu.length} món cần dùng sớm</b><span>${fu.slice(0, 3).map((x) => `${esc(x.name)} · ${fLabel(x).toLowerCase()}`).join(', ')}</span></div></button>` : ''}${dl.map((L) => `<button class="notif" style="width:100%;text-align:left" data-letter="${L.id}"><span class="mi" style="background:var(--primary-soft);color:var(--primary)">${ic('envelope')}</span><div><b>Thư từ quá khứ đã đến ngày mở</b><span>Viết ngày ${fmtDMY(L.created)}</span></div></button>`).join('')}${dn.map((x) => `<button class="notif" style="width:100%;text-align:left" ${x.week ? `data-duty-week="${x.week}"` : x.entry ? `data-duty-entry="${x.entry}"` : 'data-duty-go'}><span class="mi" style="background:color-mix(in srgb, ${x.color} 16%, transparent);color:${x.color};font-size:13px;font-weight:800">${x.badge}</span><div><b>${esc(x.title)}</b><span>${esc(x.sub)}</span></div></button>`).join('')}${evs.map(({ e, next }) => `<div class="notif"><span class="mi" style="background:rgba(214,48,58,.1)">${EV_TYPES[e.type][1]}</span><div><b>${esc(e.title)}</b><span>${daysBetween(keyOf(), next) === 0 ? 'Hôm nay' : daysBetween(keyOf(), next) === 1 ? 'Ngày mai' : `Còn ${daysBetween(keyOf(), next)} ngày`} · ${fmtDM(next)}</span></div></div>`).join('')}${rl ? `<button class="notif" data-open-read style="width:100%;text-align:left"><span class="mi" style="background:color-mix(in srgb, var(--c-study) 14%, transparent);color:var(--c-study)">${ic('book')}</span><div><b>Còn ${rl} phút đọc sách hôm nay</b><span>Chạm để đọc ngay · giữ chuỗi ${readStreak()} ngày</span></div></button>` : ''}${up.map((t) => item(t, 'up')).join('')}${od.map((t) => item(t, 'od')).join('')}</div>` : '<div class="empty"><div class="big">🔔</div>Bạn không có thông báo nào.<br>Mọi thứ đều đang đúng tiến độ!</div>'}`, (sh) => {
       sh.addEventListener('click', (e) => {
         if (e.target.closest('[data-open-read]')) { const L = featuredLesson(); L && openReader(L.id); return; }
+        if (e.target.closest('[data-fridge]')) { closeSheet(true); go('fridge'); return; }
         const lt = e.target.closest('[data-letter]');
         if (lt) { openLetter(lt.dataset.letter); return; }
         const w = e.target.closest('[data-duty-week]'), en = e.target.closest('[data-duty-entry]'), g = e.target.closest('[data-duty-go]');
@@ -2892,6 +3065,28 @@
       case 'go': go(b.dataset.to); break;
       case 'pin': if (togglePin(b.dataset.id)) render(); break;
       case 'home-edit': homeEditSheet(); break;
+      case 'f-zone': ui.fZone = b.dataset.z; render(); break;
+      case 'f-new': fridgeSheet(); break;
+      case 'f-edit': fridgeSheet(S.fridge.find((x) => x.id === b.dataset.id)); break;
+      case 'f-use': {
+        const x = S.fridge.find((y) => y.id === b.dataset.id); if (!x) break;
+        const step = ['kg', 'lạng'].includes(x.unit) && x.qty < 1 ? x.qty : 1;
+        if (x.qty - step <= 0.001) fRemove(x, 'used');
+        else { x.qty = Math.round((x.qty - step) * 100) / 100; save(); render(); toast(`${x.name}: còn ${fNum(x.qty)} ${x.unit}`); }
+        break;
+      }
+      case 'shop-tg': { const x = S.shop.find((y) => y.id === b.dataset.id); if (x) { x.done = !x.done; save(); render(); } break; }
+      case 'shop-clear': S.shop = S.shop.filter((x) => !x.done); save(); render(); break;
+      case 'shop-to-fridge': {
+        const bought = S.shop.filter((x) => x.done);
+        bought.forEach((x) => {
+          const t = fGuess(x.name), cat = t ? t[2] : 'other', zone = t ? t[4] : 'cool', n = fShelf(cat, zone);
+          S.fridge.push({ id: uid(), name: x.name, emoji: t ? t[1] : F_CATS[cat][1], cat, zone, qty: 1, unit: t ? t[3] : 'cái', added: today, exp: n ? addDays(today, n) : '' });
+        });
+        S.shop = S.shop.filter((x) => !x.done); save(); render();
+        toast(`Đã cho ${bought.length} món vào tủ. Chạm từng món để chỉnh số lượng, hạn dùng`);
+        break;
+      }
       case 'check-update': {
         if (!swReg) { toast(`Bạn đang dùng phiên bản ${APP_VERSION}`); break; }
         b.disabled = true;
@@ -3041,6 +3236,13 @@
     }
   });
 
+  $('#view').addEventListener('submit', (e) => {
+    if (e.target.id !== 'shop-add') return;
+    e.preventDefault();
+    const v = e.target.item.value.trim(); if (!v) return;
+    S.shop.push({ id: uid(), name: v, done: false }); save(); render();
+    const inp = $('#shop-add input'); if (inp) inp.focus();
+  });
   $('#view').addEventListener('change', (e) => {
     if (e.target.matches('[data-win-input]')) { const file = e.target.files[0]; e.target.value = ''; winFromFile(file); return; }
     if (e.target.id === 'duty-daystart' && e.target.value) { S.duty.dayStart = e.target.value; S.duty.dayStartSet = true; save(); render(); toast(`Ngày trực bắt đầu lúc ${e.target.value}`); }

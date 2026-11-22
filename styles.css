@@ -1440,3 +1440,43 @@ body.reading .toast.show { transform: translate(-50%, 0) scale(1); }
   background-size: 300% 100%; animation: shimmer 1.3s linear infinite;
 }
 @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -50% 0; } }
+
+/* ================= Tủ lạnh ================= */
+.f-sum .w b { color: #e5a50a; }
+.f-sum .b b { color: #d6303a; }
+.f-tip { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 16px; margin-bottom: 14px; background: rgba(229,165,10,.12); color: #8a5d00; font-size: 13.5px; line-height: 1.45; }
+:root[data-theme="dark"] .f-tip { color: #f3d062; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .f-tip { color: #f3d062; } }
+.f-tip svg { width: 18px; height: 18px; flex-shrink: 0; margin-top: 1px; }
+.f-list { display: flex; flex-direction: column; gap: 8px; }
+.f-item { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 6px; border-radius: 18px; padding: 6px 8px 6px 6px; border-left: 4px solid transparent; }
+.f-item.st-bad { border-left-color: #d6303a; }
+.f-item.st-warn { border-left-color: #ec7a3c; }
+.f-item.st-soon { border-left-color: #e5a50a; }
+.f-main { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; text-align: left; padding: 4px; min-width: 0; }
+.f-emo { width: 42px; height: 42px; border-radius: 14px; display: grid; place-items: center; font-size: 22px; background: var(--primary-soft); flex-shrink: 0; }
+.f-emo.big { width: 52px; height: 52px; font-size: 28px; border-radius: 16px; }
+.f-info { min-width: 0; }
+.f-info b { display: block; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.f-info span { font-size: 12.5px; color: var(--muted); }
+.f-badge { font-size: 11.5px; font-weight: 700; padding: 5px 9px; border-radius: 99px; white-space: nowrap; background: var(--primary-soft); color: var(--primary); }
+.st-bad .f-badge { background: rgba(214,48,58,.12); color: #d6303a; }
+.st-warn .f-badge { background: rgba(236,122,60,.14); color: #d4621f; }
+.st-soon .f-badge { background: rgba(229,165,10,.15); color: #a87700; }
+.st-none .f-badge { background: transparent; color: var(--muted); font-weight: 500; }
+.f-use { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; color: var(--primary); background: var(--primary-soft); }
+.f-use svg { width: 18px; height: 18px; }
+.f-tpl { margin-bottom: 14px; }
+.f-name { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: center; margin-bottom: 16px; }
+.f-qty { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.f-end { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.f-end .btn { height: 46px; font-size: 14px; padding: 0 10px; }
+.shop-add { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-bottom: 10px; }
+.shop-add .input { height: 46px; }
+.shop-add .btn { height: 46px; width: 46px; padding: 0; border-radius: 14px; }
+.shop { border-radius: 18px; padding: 6px 12px; display: flex; flex-direction: column; }
+.shop .sub { font-size: 15px; padding: 9px 2px; color: var(--text); }
+.shop .sub.on { color: var(--muted); }
+.fridge-alert .soon-e { color: var(--primary); background: var(--primary-soft); }
+.fridge-alert .soon-e svg { width: 22px; height: 22px; }
+.fridge-alert.hot .soon-e { color: #d6303a; background: rgba(214,48,58,.1); }
