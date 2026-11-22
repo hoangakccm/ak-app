@@ -245,12 +245,12 @@
       <button class="goal" data-act="go-analytics">
         <svg class="mtn" viewBox="0 0 230 140" aria-hidden="true">
           <defs>
-            <linearGradient id="mg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#d8e6b8" stop-opacity=".1"/></linearGradient>
-            <linearGradient id="mg2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1f3a17" stop-opacity=".9"/><stop offset="1" stop-color="#4d7432" stop-opacity="0"/></linearGradient>
+            <linearGradient id="mg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#d4f8e0" stop-opacity=".1"/></linearGradient>
+            <linearGradient id="mg2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0a7a3a" stop-opacity=".9"/><stop offset="1" stop-color="#2fc06b" stop-opacity="0"/></linearGradient>
           </defs>
           <path d="M60 140 140 34l20 18 18-14 52 102z" fill="url(#mg2)"/>
           <path d="M140 34l-14 18 10-3 8 9 6-12 10 6z" fill="url(#mg)"/>
-          <path d="M0 140 70 80l30 22 40-30 90 68z" fill="#1c3315" opacity=".35"/>
+          <path d="M0 140 70 80l30 22 40-30 90 68z" fill="#076b33" opacity=".35"/>
         </svg>
         <div class="goal-tag"><span class="ring">${ic('target', 'stroke-width="2.4"')}</span>Mục tiêu hôm nay</div>
         <h2>${title}</h2>
@@ -612,7 +612,7 @@
       <div class="seg" id="t-presets" style="margin-bottom:18px">${[15, 25, 45, 60].map((p) => `<button data-p="${p}">${p} phút</button>`).join('')}</div>
       <div class="timer">
         <svg viewBox="0 0 240 240" aria-hidden="true">
-          <defs><linearGradient id="tg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8fb35a"/><stop offset="1" stop-color="#3e6b2f"/></linearGradient></defs>
+          <defs><linearGradient id="tg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6fe39a"/><stop offset="1" stop-color="#18a957"/></linearGradient></defs>
           <circle class="track" cx="120" cy="120" r="108" fill="none" stroke-width="14"/>
           <circle class="prog" id="t-prog" cx="120" cy="120" r="108" fill="none" stroke-width="14" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C}"/>
         </svg>
