@@ -765,7 +765,7 @@
 
       <div class="section-head">
         <h3>Việc của tôi</h3>
-        <button class="link" data-act="see-all">Xem lịch ${ic('chevR')}</button>
+        ${rollCandidates().length ? `<button class="link" data-act="roll">${ic('arrowR')} Dời sang mai</button>` : `<button class="link" data-act="see-all">Xem lịch ${ic('chevR')}</button>`}
       </div>
       ${list.length || od.length ? groupedHTML(rest, od) : emptyHTML('Hôm nay chưa có việc nào', 'Thêm việc')}`;
   }
@@ -1107,6 +1107,7 @@
         <button class="menu-item" data-act="avatar"><span class="mi">${ic('smile')}</span><span class="grow">Ảnh đại diện</span><span class="chev">${ic('chevR')}</span></button>
         <button class="menu-item" data-act="theme"><span class="mi">${ic('moon')}</span><span class="grow">Giao diện</span><span class="hint">${themeLbl}</span></button>
         <button class="menu-item" data-act="preset"><span class="mi">${ic('clock')}</span><span class="grow">Thời lượng tập trung</span><span class="hint">${S.focusPreset} phút</span></button>
+        <button class="menu-item" data-act="auto-roll" role="switch" aria-checked="${!!S.autoRoll}"><span class="mi">${ic('repeat')}</span><span class="grow">Tự chuyển việc chưa xong sang hôm sau</span><span class="switch ${S.autoRoll ? 'on' : ''}"><i></i></span></button>
         <button class="menu-item" data-act="water-goal"><span class="mi">${ic('drop')}</span><span class="grow">Mục tiêu uống nước</span><span class="hint">${S.waterGoal} ly</span></button>
         <button class="menu-item" data-act="go-journal"><span class="mi">${ic('journal')}</span><span class="grow">Nhật ký tâm trạng</span><span class="chev">${ic('chevR')}</span></button>
         <button class="menu-item" data-act="read-goal"><span class="mi">${ic('book')}</span><span class="grow">Mục tiêu đọc mỗi ngày</span><span class="hint">${S.readGoal} phút</span></button>
@@ -1412,6 +1413,77 @@
         toast(e2.tomorrowTask && !j.tomorrowTask ? 'Đã lưu nhật ký · đã thêm việc vào Top 3 ngày mai' : 'Đã lưu nhật ký 🌙');
       });
     });
+  }
+
+  // ---------- Dời việc chưa xong ----------
+  const rollCandidates = (upTo = keyOf()) => S.tasks.filter((t) => !t.repeat && !t.done && t.date <= upTo)
+    .sort((a, b) => (a.date + (a.time || '99')).localeCompare(b.date + (b.time || '99')));
+
+  // Chuyển các việc (id) sang ngày `to`; giữ chỗ trong Top 3 nếu còn trống. Trả về hàm hoàn tác.
+  function moveTasks(ids, to) {
+    const prevTop = JSON.parse(JSON.stringify(S.top3));
+    const prev = [];
+    ids.forEach((id) => {
+      const t = S.tasks.find((x) => x.id === id);
+      if (!t) return;
+      prev.push([t, t.date]);
+      const from = t.date;
+      if ((S.top3[from] || []).includes(id)) {
+        S.top3[from] = S.top3[from].filter((x) => x !== id);
+        const dst = S.top3[to] || [];
+        if (dst.length < 3 && !dst.includes(id)) S.top3[to] = [...dst, id];
+      }
+      t.date = to;
+    });
+    save();
+    return () => { prev.forEach(([t, d]) => (t.date = d)); S.top3 = prevTop; save(); render(); };
+  }
+
+  function rollSheet() {
+    const today = keyOf(), tmr = addDays(today, 1);
+    const cands = rollCandidates();
+    const reps = tasksOn(today).filter((t) => t.occ && !t.done).length;
+    const sel = new Set(cands.map((t) => t.id));
+    const label = () => (sel.size ? `${ic('arrowR')} Dời ${sel.size} việc sang ngày mai` : 'Chưa chọn việc nào');
+    openSheet(`<h3>Dời việc chưa xong</h3>
+      <p class="page-sub" style="margin-top:-10px">Chuyển sang ngày mai, ${WD[dateOf(tmr).getDay()]} ${fmtDM(tmr)}. Giờ đã đặt được giữ nguyên.</p>
+      ${cands.length > 1 ? `<button class="link" id="rl-all" style="margin:0 0 10px 4px">Bỏ chọn tất cả</button>` : ''}
+      <div class="picks" id="rl">${cands.map((t) => `<button class="pick roll on" data-id="${t.id}"><span class="pick-c">${ic('check', 'stroke-width="3"')}</span><span><b>${esc(t.title)}</b><span>${t.date < today ? `Quá hạn · ${dayLabel(t.date)}` : 'Hôm nay'}${t.time ? `, ${t.time}` : ''}</span></span></button>`).join('')}</div>
+      ${reps ? `<p class="footnote" style="text-align:left;margin:12px 4px 0">${reps} việc lặp lại sẽ tự có lại theo lịch nên không cần dời.</p>` : ''}
+      <button class="btn btn-primary btn-block" id="rl-go" style="margin-top:16px">${label()}</button>
+      <label class="check-row" style="margin:16px 0 0 4px"><input type="checkbox" id="rl-auto" ${S.autoRoll ? 'checked' : ''}> Từ nay tự chuyển việc chưa xong sang hôm sau</label>`, (sh) => {
+      const sync = () => {
+        $$('#rl .pick', sh).forEach((b) => b.classList.toggle('on', sel.has(b.dataset.id)));
+        $('#rl-go', sh).innerHTML = label(); $('#rl-go', sh).disabled = !sel.size;
+        const all = $('#rl-all', sh); if (all) all.textContent = sel.size === cands.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả';
+      };
+      $('#rl', sh).addEventListener('click', (e) => {
+        const b = e.target.closest('.pick'); if (!b) return;
+        sel.has(b.dataset.id) ? sel.delete(b.dataset.id) : sel.add(b.dataset.id); sync();
+      });
+      const all = $('#rl-all', sh);
+      if (all) all.addEventListener('click', () => { if (sel.size === cands.length) sel.clear(); else cands.forEach((t) => sel.add(t.id)); sync(); });
+      $('#rl-auto', sh).addEventListener('change', (e) => {
+        S.autoRoll = e.target.checked; save();
+        toast(S.autoRoll ? 'Đã bật tự chuyển việc chưa xong sang hôm sau' : 'Đã tắt tự chuyển việc');
+      });
+      $('#rl-go', sh).addEventListener('click', () => {
+        if (!sel.size) return;
+        const n = sel.size, undo = moveTasks([...sel], tmr);
+        closeSheet(); render();
+        toast(`Đã dời ${n} việc sang ngày mai`, { fn: undo });
+      });
+    });
+  }
+
+  // Tự động: khi mở app sang ngày mới, việc chưa xong của các ngày trước chuyển sang hôm nay
+  function autoRollover() {
+    if (!S.autoRoll || !S.onboarded) return;
+    const today = keyOf(), ids = rollCandidates(addDays(today, -1)).map((t) => t.id);
+    if (!ids.length) return;
+    const undo = moveTasks(ids, today);
+    render();
+    toast(`Đã chuyển ${ids.length} việc chưa xong sang hôm nay`, { fn: undo });
   }
 
   function quickAddSheet() {
@@ -1965,6 +2037,12 @@
       case 'read-goal':
         choiceSheet('Mục tiêu đọc mỗi ngày', [5, 10, 15, 20, 30].map((p) => [p, `${p} phút`, 'book']), S.readGoal, (v) => { S.readGoal = +v; save(); });
         break;
+      case 'roll': rollSheet(); break;
+      case 'auto-roll':
+        S.autoRoll = !S.autoRoll; save(); render();
+        toast(S.autoRoll ? 'Việc chưa xong sẽ tự chuyển sang hôm sau' : 'Đã tắt tự chuyển việc');
+        if (S.autoRoll) autoRollover();
+        break;
       case 'see-all': ui.calSel = keyOf(); ui.calWeek = mondayOf(keyOf()); go('calendar'); break;
       case 'week-prev': ui.calWeek = addDays(ui.calWeek, -7); ui.calSel = ui.calWeek; render(); break;
       case 'week-next': ui.calWeek = addDays(ui.calWeek, 7); ui.calSel = ui.calWeek; render(); break;
@@ -2002,7 +2080,7 @@
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
     if (S.timer && S.timer.endsAt) ensureTick();
-    if (keyOf() !== lastDay) { lastDay = keyOf(); ui.calSel = lastDay; ui.calWeek = mondayOf(lastDay); }
+    if (keyOf() !== lastDay) { lastDay = keyOf(); ui.calSel = lastDay; ui.calWeek = mondayOf(lastDay); autoRollover(); }
     if (R) { R.last = Date.now(); updateReadUI(); }
     if (!$('.sheet') && !R) render();
   });
@@ -2125,6 +2203,7 @@
   applyTheme();
   render(true);
   if (!S.onboarded) onboarding();
+  autoRollover();
   if (S.timer && S.timer.endsAt) ensureTick();
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     navigator.serviceWorker.register('sw.js').catch(() => {});

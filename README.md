@@ -7,6 +7,7 @@
 - **Trang chủ**: lời chào theo giờ, 3 thẻ thống kê (việc xong tuần này, thời gian tập trung hôm nay, chuỗi ngày liên tục), thẻ “Mục tiêu hôm nay” với thanh tiến độ, danh sách việc hôm nay.
 - **Thêm/sửa công việc**: tên, ngày, giờ (có nút chọn nhanh 7:00/12:00/18:00/21:00), danh mục, **lặp lại** (hằng ngày, T2–T6, hằng tuần, hằng tháng, chọn thứ) và **các bước nhỏ** (checklist). Menu ⋮ để sửa, đưa vào Top 3, dời sang ngày mai, bỏ qua một lần lặp hoặc xóa.
 - **Vuốt trên việc**: vuốt phải để hoàn thành, vuốt trái để xóa (việc lặp lại: bỏ qua lần này). Mọi thao tác xóa/dời/hoàn thành đều có nút **Hoàn tác**.
+- **Dời việc chưa xong sang ngày mai**: bấm “Dời sang mai” ở mục Việc của tôi, chọn việc muốn dời (gồm cả việc quá hạn), giữ nguyên giờ và chỗ trong Top 3, có Hoàn tác. Có thể bật **tự chuyển việc chưa xong sang hôm sau** trong trang Cá nhân.
 - **Top 3 hôm nay**: chọn 3 việc quan trọng nhất, ghim lên đầu trang chủ. Danh sách việc chia nhóm Quá hạn / Sáng / Chiều / Tối / Trong ngày / Đã xong.
 - **Uống nước** (đếm ly theo mục tiêu), **tâm trạng** 5 mức và **nhật ký** một dòng; buổi tối có **Tổng kết ngày** với 3 câu hỏi và tự thêm ưu tiên của ngày mai vào Top 3.
 - **Màn chào lần đầu**: hỏi tên, ảnh đại diện, thói quen muốn rèn và mục tiêu đọc sách, uống nước.

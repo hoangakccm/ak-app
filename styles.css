@@ -993,3 +993,14 @@ body.reading .toast.show { transform: translate(-50%, 0); }
 .ob-habits em { font-style: normal; font-size: 22px; }
 .ob-habits button.on { border-color: var(--primary); background: var(--primary-soft); color: var(--primary); }
 .notif .mi { font-size: 20px; }
+
+/* Dời việc chưa xong */
+.pick-c { width: 26px; height: 26px; border-radius: 8px; border: 2px solid color-mix(in srgb, var(--muted) 55%, transparent); display: grid; place-items: center; color: #fff; flex-shrink: 0; }
+.pick-c svg { width: 15px; height: 15px; opacity: 0; }
+.pick.roll.on { border-color: var(--primary); }
+.pick.roll.on .pick-c { background: var(--primary); border-color: var(--primary); }
+.pick.roll.on .pick-c svg { opacity: 1; }
+.menu-item .switch { width: 46px; height: 28px; }
+.menu-item .switch i { width: 22px; height: 22px; }
+.menu-item .switch.on i { transform: translateX(18px); }
+.toast.has-act:not(.show) { pointer-events: none; }
