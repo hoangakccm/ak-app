@@ -55,6 +55,9 @@
     wins: '<path d="M4 8h3l2-3h6l2 3h3v12H4z"/><path d="M12 17.6s-3.2-1.9-3.2-4.1a1.7 1.7 0 0 1 3.2-.9 1.7 1.7 0 0 1 3.2.9c0 2.2-3.2 4.1-3.2 4.1z"/>',
     lock: '<rect x="5" y="11" width="14" height="9.5" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
     share: '<path d="M12 15V3.5M7.5 8 12 3.5 16.5 8"/><path d="M5 12v7.5h14V12"/>',
+    pin: '<path d="M9 3.5h6l-1 5.5 3.2 3.2v2H6.8v-2L10 9z"/><path d="M12 14.2v6.3"/>',
+    chevU: '<path d="m6 15 6-6 6 6"/>',
+    chevD: '<path d="m6 9 6 6 6-6"/>',
     phone: '<rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
   };
   const ic = (name, extra = '') =>
@@ -97,9 +100,9 @@
     return { h: Math.floor(m / 60), m: m % 60 };
   }
 
-  const APP_VERSION = '1.16';
+  const APP_VERSION = '1.17';
   const APP_DATE = '22/11/2026';
-  const APP_NOTE = 'Hiện số phiên bản, kiểm tra cập nhật';
+  const APP_NOTE = 'Tùy chỉnh trang chủ, ghim tiện ích, thanh tiêu đề thu gọn, chuyển trang mượt';
   let swReg = null;
 
   // ---------- State ----------
@@ -166,6 +169,7 @@
     }
     S.letters = Array.isArray(S.letters) ? S.letters : [];
     S.wins = Array.isArray(S.wins) ? S.wins : [];
+    S.pins = Array.isArray(S.pins) ? S.pins : ['shift', 'money', 'events', 'lunar'];
   }
   normalize();
   const save = () => { try { localStorage.setItem(STORE, JSON.stringify(S)); } catch { toast('Không lưu được dữ liệu'); } };
@@ -1215,22 +1219,8 @@
     const hr = new Date().getHours();
     const jt = S.journal[today] || {};
     const w = waterOn(today);
-    return `
-      <div class="topbar">
-        <button class="icon-btn glass" data-act="search" aria-label="Tìm kiếm">${ic('search')}</button>
-        <button class="icon-btn glass" data-act="notif" aria-label="Thông báo">${ic('bell')}${hasNotif ? '<span class="dot"></span>' : ''}</button>
-      </div>
-      <section class="hero">
-        <div>
-          <p class="hello-sub">${greeting()}</p>
-          <h1 class="hello">Xin chào, ${esc(S.name || 'bạn')} <span class="wave">👋</span></h1>
-          <p class="tagline">${esc(S.tagline || '')}</p>
-          ${heroDutyChip()}
-        </div>
-        <button data-act="go-profile" aria-label="Trang cá nhân">${avatarHTML()}</button>
-      </section>
-
-      <section class="stats">
+    const blocks = {
+      stats: `<section class="stats">
         <button class="stat glass" data-act="go-analytics">
           <span class="stat-ic ic-green">${ic('bars', 'stroke-width="2.6"')}</span>
           <span class="stat-val">${weekDone()}</span>
@@ -1246,9 +1236,8 @@
           <span class="stat-val">${streak()}</span>
           <span class="stat-lbl">Ngày liên tục</span>
         </button>
-      </section>
-
-      <button class="goal" data-act="go-analytics">
+      </section>`,
+      goal: `<button class="goal" data-act="go-analytics">
         <svg class="mtn" viewBox="0 0 230 140" aria-hidden="true">
           <defs>
             <linearGradient id="mg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#d4f8e0" stop-opacity=".1"/></linearGradient>
@@ -1266,10 +1255,9 @@
           <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><i data-w="${pct}"></i></div>
           <span>${pct}%</span>
         </div>
-      </button>
-
-      <section class="daily">
-        <div class="water glass">
+      </button>`,
+      pins: pinsHTML(),
+      water: `<div class="water glass">
           <span class="w-ic">${ic('drop')}</span>
           <div class="w-body">
             <div class="w-top"><b>${w}</b><span>/ ${S.waterGoal} ly nước</span>${w >= S.waterGoal ? '<em>Đủ rồi 💧</em>' : ''}</div>
@@ -1277,43 +1265,140 @@
           </div>
           <button class="w-btn ghost" data-act="water-minus" aria-label="Bớt 1 ly">${ic('minus', 'stroke-width="2.6"')}</button>
           <button class="w-btn" data-act="water-plus" aria-label="Thêm 1 ly">${ic('plus', 'stroke-width="2.6"')}</button>
-        </div>
-        <div class="mood glass">
+        </div>`,
+      mood: `<div class="mood glass">
           <div class="mood-h"><span>Hôm nay bạn thấy thế nào?</span><button class="link" data-act="go-journal">${ic('journal')} Nhật ký</button></div>
           <div class="moods">${MOODS.map((m, i) => `<button class="${jt.mood === i + 1 ? 'on' : ''}" data-act="mood" data-v="${i + 1}" aria-label="${m.l}" title="${m.l}">${m.e}</button>`).join('')}</div>
           ${jt.mood ? `<button class="mood-note" data-act="review">${jt.note ? `“${esc(jt.note)}”` : `${ic('edit')} Viết một dòng cho hôm nay…`}</button>` : ''}
+        </div>`,
+      alerts: [
+        (() => {
+          const hol = holidaysOn(today), evs = upcomingEvents(7).slice(0, 2);
+          if (!hol.length && !evs.length) return '';
+          return `<div class="soon">${hol.map((h) => `<button class="soon-i glass" data-act="go" data-to="lunar">${holiIcon(h.i)}<span><b>${h.n}</b><span>Hôm nay · ${lunarFull(today)}</span></span></button>`).join('')}
+            ${evs.map(({ e, next }) => { const n = daysBetween(today, next), y = evYears(e, next); return `<button class="soon-i glass ${n === 0 ? 'hot' : ''}" data-act="event-edit" data-eid="${e.id}"><span class="soon-e">${EV_TYPES[e.type][1]}</span><span><b>${esc(e.title)}</b><span>${n === 0 ? 'Hôm nay' : n === 1 ? 'Ngày mai' : `Còn ${n} ngày`} · ${fmtDM(next)}${y > 0 && e.type === 'birthday' ? ` · tròn ${y} tuổi` : ''}</span></span></button>`; }).join('')}</div>`;
+        })(),
+        (() => { const L = dueLetters()[0]; return L ? `<button class="prompt glass letter-due" data-act="letter-open" data-id="${L.id}"><span class="pi letter">${ic('envelope')}</span><span class="pt"><b>Bạn có thư từ quá khứ! 💌</b><span>Viết ngày ${fmtDMY(L.created)} · chạm để mở</span></span>${ic('chevR')}</button>` : ''; })(),
+        (() => { const r = dutyReminder(); return r ? `<button class="prompt glass" data-act="duty-week" data-mon="${r.mon}"><span class="pi duty">${ic('duty')}</span><span class="pt"><b>${r.title}</b><span>${r.sub}</span></span>${ic('chevR')}</button>` : ''; })(),
+        dutyNowCard(),
+      ].join(''),
+      habits: habitStripHTML(),
+      wins: locketHTML(),
+      read: readCardHTML(),
+      top3: (hr >= 18 && !jt.reviewed ? `<button class="prompt glass" data-act="review"><span class="pi night">${ic('moon')}</span><span class="pt"><b>Tổng kết ngày</b><span>3 câu hỏi ngắn để nhìn lại hôm nay</span></span>${ic('chevR')}</button>` : '')
+        + (topTasks.length ? `<div class="section-head"><h3 class="h-ic"><span class="star">${ic('star')}</span>Top 3 hôm nay</h3><button class="link" data-act="pick-top3">Chỉnh sửa</button></div>
+          <div class="tasks top3">${topTasks.map((t) => taskHTML(t)).join('')}</div>`
+          : undone >= 2 ? `<button class="prompt glass" data-act="pick-top3"><span class="pi">${ic('star')}</span><span class="pt"><b>Chọn Top 3 hôm nay</b><span>3 việc quan trọng nhất cần làm trước</span></span>${ic('chevR')}</button>` : ''),
+      tasks: `<div class="section-head">
+          <h3>Việc của tôi</h3>
+          ${rollCandidates().length ? `<button class="link" data-act="roll">${ic('arrowR')} Dời sang mai</button>` : `<button class="link" data-act="see-all">Xem lịch ${ic('chevR')}</button>`}
         </div>
-      </section>
-
-      ${(() => {
-        const hol = holidaysOn(today), evs = upcomingEvents(7).slice(0, 2);
-        if (!hol.length && !evs.length) return '';
-        return `<div class="soon">${hol.map((h) => `<button class="soon-i glass" data-act="go" data-to="lunar">${holiIcon(h.i)}<span><b>${h.n}</b><span>Hôm nay · ${lunarFull(today)}</span></span></button>`).join('')}
-          ${evs.map(({ e, next }) => { const n = daysBetween(today, next), y = evYears(e, next); return `<button class="soon-i glass ${n === 0 ? 'hot' : ''}" data-act="event-edit" data-eid="${e.id}"><span class="soon-e">${EV_TYPES[e.type][1]}</span><span><b>${esc(e.title)}</b><span>${n === 0 ? 'Hôm nay' : n === 1 ? 'Ngày mai' : `Còn ${n} ngày`} · ${fmtDM(next)}${y > 0 && e.type === 'birthday' ? ` · tròn ${y} tuổi` : ''}</span></span></button>`; }).join('')}</div>`;
-      })()}
-
-      ${(() => { const L = dueLetters()[0]; return L ? `<button class="prompt glass letter-due" data-act="letter-open" data-id="${L.id}"><span class="pi letter">${ic('envelope')}</span><span class="pt"><b>Bạn có thư từ quá khứ! 💌</b><span>Viết ngày ${fmtDMY(L.created)} · chạm để mở</span></span>${ic('chevR')}</button>` : ''; })()}
-      ${(() => { const r = dutyReminder(); return r ? `<button class="prompt glass" data-act="duty-week" data-mon="${r.mon}"><span class="pi duty">${ic('duty')}</span><span class="pt"><b>${r.title}</b><span>${r.sub}</span></span>${ic('chevR')}</button>` : ''; })()}
-      ${dutyNowCard()}
-
-      ${habitStripHTML()}
-
-      ${locketHTML()}
-
-      ${readCardHTML()}
-
-      ${hr >= 18 && !jt.reviewed ? `<button class="prompt glass" data-act="review"><span class="pi night">${ic('moon')}</span><span class="pt"><b>Tổng kết ngày</b><span>3 câu hỏi ngắn để nhìn lại hôm nay</span></span>${ic('chevR')}</button>` : ''}
-
-      ${topTasks.length ? `<div class="section-head"><h3 class="h-ic"><span class="star">${ic('star')}</span>Top 3 hôm nay</h3><button class="link" data-act="pick-top3">Chỉnh sửa</button></div>
-      <div class="tasks top3">${topTasks.map((t) => taskHTML(t)).join('')}</div>`
-      : undone >= 2 ? `<button class="prompt glass" data-act="pick-top3"><span class="pi">${ic('star')}</span><span class="pt"><b>Chọn Top 3 hôm nay</b><span>3 việc quan trọng nhất cần làm trước</span></span>${ic('chevR')}</button>` : ''}
-
-      <div class="section-head">
-        <h3>Việc của tôi</h3>
-        ${rollCandidates().length ? `<button class="link" data-act="roll">${ic('arrowR')} Dời sang mai</button>` : `<button class="link" data-act="see-all">Xem lịch ${ic('chevR')}</button>`}
+        ${list.length || od.length ? groupedHTML(rest, od) : emptyHTML('Hôm nay chưa có việc nào', 'Thêm việc')}`,
+    };
+    return `
+      <div class="topbar">
+        <button class="icon-btn glass" data-act="search" aria-label="Tìm kiếm">${ic('search')}</button>
+        <button class="icon-btn glass" data-act="notif" aria-label="Thông báo">${ic('bell')}${hasNotif ? '<span class="dot"></span>' : ''}</button>
       </div>
-      ${list.length || od.length ? groupedHTML(rest, od) : emptyHTML('Hôm nay chưa có việc nào', 'Thêm việc')}`;
+      <section class="hero">
+        <div>
+          <p class="hello-sub">${greeting()}</p>
+          <h1 class="hello">Xin chào, ${esc(S.name || 'bạn')} <span class="wave">👋</span></h1>
+          <p class="tagline">${esc(S.tagline || '')}</p>
+          ${heroDutyChip()}
+        </div>
+        <button data-act="go-profile" aria-label="Trang cá nhân">${avatarHTML()}</button>
+      </section>
+      ${homeLayout().filter((b) => b.on).map((b) => { const h = (blocks[b.id] || '').trim(); return h ? `<div class="hb hb-${b.id}">${h}</div>` : ''; }).join('')}
+      <button class="home-edit" data-act="home-edit">${ic('grid')} Tùy chỉnh trang chủ</button>`;
   }
+
+  // ----- Trang chủ tùy chỉnh -----
+  const HOME_BLOCKS = [
+    ['stats', 'Thống kê nhanh', 'bars'], ['goal', 'Mục tiêu hôm nay', 'target'], ['pins', 'Tiện ích đã ghim', 'pin'],
+    ['water', 'Uống nước', 'drop'], ['mood', 'Tâm trạng', 'smile'], ['alerts', 'Nhắc nhở & sự kiện', 'bell'],
+    ['habits', 'Thói quen hôm nay', 'sprout'], ['wins', 'Chiến tích hôm nay', 'wins'], ['read', 'Đọc mỗi ngày', 'book'],
+    ['top3', 'Top 3 & tổng kết ngày', 'star'], ['tasks', 'Việc của tôi', 'list'],
+  ];
+  const DEFAULT_PINS = ['shift', 'money', 'events', 'lunar'];
+  function homeLayout() {
+    const saved = (Array.isArray(S.homeLayout) ? S.homeLayout : []).filter((b) => HOME_BLOCKS.some((h) => h[0] === b.id)).map((b) => ({ ...b }));
+    HOME_BLOCKS.forEach(([id], i) => { if (!saved.some((b) => b.id === id)) saved.splice(Math.min(i, saved.length), 0, { id, on: true }); });
+    saved.forEach((b) => { if (b.id === 'tasks') b.on = true; });
+    return saved;
+  }
+  function pinsHTML() {
+    const { tiles } = toolTiles();
+    const list = S.pins.map((id) => tiles.find((t) => t[0] === id)).filter(Boolean);
+    if (!list.length) return '';
+    return `<div class="pins">${list.map(([id, n, i, , sub]) => `<button class="pin glass" data-act="go" data-to="${id}"><span class="pin-ic">${ic(i)}</span><span class="pin-t"><b>${n}</b><small>${sub}</small></span></button>`).join('')}</div>`;
+  }
+  function togglePin(id) {
+    const name = (toolTiles().tiles.find((t) => t[0] === id) || [, ''])[1];
+    if (S.pins.includes(id)) { S.pins = S.pins.filter((x) => x !== id); toast(`Đã bỏ ghim ${name}`); }
+    else if (S.pins.length >= 4) { toast('Chỉ ghim tối đa 4 tiện ích. Hãy bỏ bớt một mục trước'); return false; }
+    else { S.pins = [...S.pins, id]; toast(`Đã ghim ${name} lên trang chủ`); }
+    save();
+    return true;
+  }
+  function homeEditSheet() {
+    const draw = () => {
+      const L = homeLayout(), { tiles } = toolTiles();
+      return `<div class="grabber"></div><h3>Tùy chỉnh trang chủ</h3>
+        <p class="page-sub" style="margin-top:-10px">Bật, tắt và sắp xếp các khối. Thay đổi được áp dụng ngay.</p>
+        <div class="he-list">${L.map((b, i) => {
+          const m = HOME_BLOCKS.find((h) => h[0] === b.id), locked = b.id === 'tasks';
+          return `<div class="he-row ${b.on ? '' : 'off'}"><span class="mi">${ic(m[2])}</span><span class="grow">${m[1]}${locked ? '<small class="pos-sub">Luôn hiển thị</small>' : ''}</span>
+            <button class="he-mv" data-mv="${i}" data-d="-1" ${i === 0 ? 'disabled' : ''} aria-label="Đưa ${m[1]} lên">${ic('chevU')}</button>
+            <button class="he-mv" data-mv="${i}" data-d="1" ${i === L.length - 1 ? 'disabled' : ''} aria-label="Đưa ${m[1]} xuống">${ic('chevD')}</button>
+            ${locked ? '<span class="he-sp"></span>' : `<button class="switch ${b.on ? 'on' : ''}" data-tg="${i}" role="switch" aria-checked="${b.on}" aria-label="Hiện ${m[1]}"><i></i></button>`}</div>`;
+        }).join('')}</div>
+        <div class="section-head" style="margin:20px 4px 10px"><h3 style="font-size:16px">Tiện ích ghim · ${S.pins.length}/4</h3></div>
+        <div class="chips sm">${tiles.map(([id, n]) => `<button class="chip ${S.pins.includes(id) ? 'on' : ''}" data-pin="${id}">${ic('pin')}${n}</button>`).join('')}</div>
+        <button class="btn btn-ghost btn-block" data-reset style="margin-top:20px">${ic('reset')} Khôi phục mặc định</button>`;
+    };
+    openSheet(draw().replace('<div class="grabber"></div>', ''), (sh) => {
+      sh.addEventListener('click', (e) => {
+        const L = homeLayout();
+        const mv = e.target.closest('[data-mv]'), tg = e.target.closest('[data-tg]'), pn = e.target.closest('[data-pin]');
+        if (mv) { const a = +mv.dataset.mv, z = a + +mv.dataset.d; [L[a], L[z]] = [L[z], L[a]]; S.homeLayout = L; save(); }
+        else if (tg) { const a = +tg.dataset.tg; L[a].on = !L[a].on; S.homeLayout = L; save(); }
+        else if (pn) { if (!togglePin(pn.dataset.pin)) return; }
+        else if (e.target.closest('[data-reset]')) { delete S.homeLayout; S.pins = DEFAULT_PINS.slice(); save(); toast('Đã khôi phục trang chủ mặc định'); }
+        else return;
+        render();
+        const y = sh.scrollTop;
+        sh.innerHTML = draw();
+        sh.scrollTop = y;
+      });
+    });
+  }
+
+  // ----- Thanh tiêu đề thu gọn khi cuộn -----
+  let cbIO = null;
+  function updateCbar() {
+    const cb = $('#cbar'), v = $('#view');
+    if (!cb) return;
+    if (cbIO) cbIO.disconnect();
+    cb.classList.remove('show');
+    const isHome = ui.tab === 'home', isSub = !MAIN_TABS.includes(ui.tab);
+    const anchor = isHome ? $('.hello', v) : $('.page-title', v);
+    if (!anchor) { cb.innerHTML = ''; return; }
+    const d = new Date(), l = lunarOf(keyOf());
+    cb.innerHTML = `<div class="cbar-in">
+      ${isSub ? `<button class="cb-btn" data-cb="back" aria-label="Quay lại">${ic('chevL')}</button>` : `<button class="cb-av" data-cb="profile" aria-label="Trang cá nhân">${avatarHTML('xs')}</button>`}
+      <button class="cb-title" data-cb="top" aria-label="Lên đầu trang"><b>${isHome ? `Xin chào, ${esc(S.name || 'bạn')} 👋` : esc(anchor.textContent.trim())}</b>${isHome ? `<small>${['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'][d.getDay()]}, ${fmtDM(keyOf())} · ÂL ${l.day}/${l.month}</small>` : ''}</button>
+      ${isHome ? `<button class="cb-btn" data-cb="search" aria-label="Tìm kiếm">${ic('search')}</button><button class="cb-btn" data-cb="notif" aria-label="Thông báo">${ic('bell')}${$('.topbar .dot', v) ? '<span class="dot"></span>' : ''}</button>` : ''}
+    </div>`;
+    if ('IntersectionObserver' in window) {
+      cbIO = new IntersectionObserver(([en]) => cb.classList.toggle('show', !en.isIntersecting && en.boundingClientRect.top < 0));
+      cbIO.observe(anchor);
+    }
+  }
+  $('#cbar').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-cb]'); if (!b) return;
+    ({ back: () => go(MAIN_TABS.includes(ui.prevTab) ? ui.prevTab : 'home'), profile: () => go('profile'), top: () => window.scrollTo({ top: 0, behavior: 'smooth' }), search: () => searchSheet(), notif: () => notifSheet() })[b.dataset.cb]();
+  });
 
   function groupedHTML(list, od) {
     const g = { am: [], pm: [], eve: [], any: [], done: [] };
@@ -1499,7 +1584,7 @@
       ${notes.map((x) => `<button class="note glass" data-act="open-read" data-id="${x.id}"><b>${esc(x.title)}</b><p>${esc(S.readNotes[x.id])}</p></button>`).join('')}` : ''}`;
   }
 
-  function viewTools() {
+  function toolTiles() {
     const k = keyOf(), mk = k.slice(0, 7);
     const dueH = S.habits.filter((h) => hDue(h, k)), doneH = dueH.filter((h) => hDone(h, k)).length;
     const outToday = sumType(S.money.filter((x) => x.date === k), 'out');
@@ -1520,8 +1605,15 @@
       ['analytics', 'Thống kê', 'chart', '', `${weekDone()} việc xong tuần này`],
       ['profile', 'Cá nhân', 'user', '', `Hồ sơ, mục tiêu, sao lưu · Phiên bản ${APP_VERSION}`],
     ];
+    return { tiles, dueL };
+  }
+
+  function viewTools() {
+    const { tiles, dueL } = toolTiles();
     return `${pageHead('Tiện ích', 'Mọi công cụ cho một ngày trọn vẹn.')}
-      <div class="tools">${tiles.map(([id, n, i, , sub]) => `<button class="tool glass ${id === 'letters' && dueL ? 'hot' : ''}" data-act="go" data-to="${id}"><span class="tool-ic">${ic(i)}</span><b>${n}</b><span>${sub}</span></button>`).join('')}</div>`;
+      <div class="tools">${tiles.map(([id, n, i, , sub]) => { const pinned = S.pins.includes(id); return `<div class="tool-w"><button class="tool glass ${id === 'letters' && dueL ? 'hot' : ''}" data-act="go" data-to="${id}"><span class="tool-ic">${ic(i)}</span><b>${n}</b><span>${sub}</span></button>
+        <button class="tool-pin ${pinned ? 'on' : ''}" data-act="pin" data-id="${id}" aria-pressed="${pinned}" aria-label="${pinned ? 'Bỏ ghim' : 'Ghim lên trang chủ'}: ${n}">${ic('pin')}</button></div>`; }).join('')}</div>
+      <p class="footnote">Chạm biểu tượng ghim để đưa tiện ích lên trang chủ (tối đa 4).</p>`;
   }
 
   function viewHabits() {
@@ -1761,7 +1853,12 @@
   function render(animate = false) {
     const v = $('#view');
     v.innerHTML = VIEWS[ui.tab]();
-    if (animate) { v.style.animation = 'none'; void v.offsetWidth; v.style.animation = ''; }
+    if (animate) {
+      v.classList.remove('nav-r', 'nav-l');
+      v.style.animation = 'none'; void v.offsetWidth; v.style.animation = '';
+      if (ui.navDir) v.classList.add(`nav-${ui.navDir}`);
+      ui.navDir = null;
+    }
     const bars = $$('[data-w]', v);
     if (animate) {
       bars.forEach((el) => { el.style.width = '0'; });
@@ -1770,6 +1867,7 @@
     } else bars.forEach((el) => { el.style.transition = 'none'; el.style.width = el.dataset.w + '%'; });
     hydratePhotos(v);
     bindLocket(v);
+    updateCbar();
     const activeTab = MAIN_TABS.includes(ui.tab) ? ui.tab : ui.prevTab;
     $$('.tab').forEach((b) => {
       b.classList.toggle('active', b.dataset.tab === activeTab);
@@ -1779,10 +1877,16 @@
 
   function go(tab) {
     if (ui.tab === tab) return;
-    if (!MAIN_TABS.includes(tab) && MAIN_TABS.includes(ui.tab)) ui.prevTab = ui.tab;
+    const from = ui.tab, fi = MAIN_TABS.indexOf(from), ti = MAIN_TABS.indexOf(tab);
+    // Hướng trượt: vào trang con từ phải, quay về từ trái, giữa các tab theo thứ tự tab
+    ui.navDir = fi >= 0 && ti >= 0 ? (ti > fi ? 'r' : 'l') : ti < 0 ? 'r' : 'l';
+    ui.scrollPos = ui.scrollPos || {};
+    ui.scrollPos[from] = window.scrollY;
+    if (ti < 0 && fi >= 0) ui.prevTab = from;
     ui.tab = tab;
     render(true);
-    window.scrollTo({ top: 0 });
+    // Quay về từ trang con thì giữ vị trí cuộn cũ
+    window.scrollTo({ top: ti >= 0 && fi < 0 ? ui.scrollPos[tab] || 0 : 0 });
   }
 
   // ---------- Tab bar ----------
@@ -2786,6 +2890,8 @@
       case 'review': reviewSheet(b.dataset.day || today); break;
       case 'go-journal': go('journal'); break;
       case 'go': go(b.dataset.to); break;
+      case 'pin': if (togglePin(b.dataset.id)) render(); break;
+      case 'home-edit': homeEditSheet(); break;
       case 'check-update': {
         if (!swReg) { toast(`Bạn đang dùng phiên bản ${APP_VERSION}`); break; }
         b.disabled = true;

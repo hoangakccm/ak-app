@@ -11,6 +11,7 @@
 - **Top 3 hôm nay**: chọn 3 việc quan trọng nhất, ghim lên đầu trang chủ. Danh sách việc chia nhóm Quá hạn / Sáng / Chiều / Tối / Trong ngày / Đã xong.
 - **Uống nước** (đếm ly theo mục tiêu), **tâm trạng** 5 mức và **nhật ký** một dòng; buổi tối có **Tổng kết ngày** với 3 câu hỏi và tự thêm ưu tiên của ngày mai vào Top 3.
 - **Màn chào lần đầu**: hỏi tên, ảnh đại diện, thói quen muốn rèn và mục tiêu đọc sách, uống nước.
+- **Trang chủ tùy chỉnh**: bật/tắt và sắp xếp các khối (thống kê, mục tiêu, tiện ích ghim, uống nước, tâm trạng, nhắc nhở, thói quen, chiến tích, đọc sách, Top 3, việc); ghim tối đa 4 tiện ích hay dùng; thanh tiêu đề thu gọn khi cuộn; chuyển trang trượt theo hướng và giữ vị trí cuộn khi quay lại.
 - **Màn chào mỗi ngày**: lần đầu mở app trong ngày hiện ngày dương/âm, ngày lễ, châm ngôn, tóm tắt “Hôm nay của bạn” (thư đến hạn, ngày quan trọng, ca trực, việc, thói quen, đọc sách), kết quả hôm qua và chọn tâm trạng.
 - **Chiến tích hôm nay** (kiểu Locket): chụp hoặc chọn ảnh khoảnh khắc đáng tự hào, thêm chú thích; khung ảnh lớn trên trang chủ (vuốt ngang để xem các ảnh trong ngày, chú thích nền kính trong), lịch ảnh theo tháng, chuỗi ngày, xem toàn màn hình, chia sẻ. Ảnh lưu trong IndexedDB của thiết bị.
 - **Thư gửi bản thân tương lai**: viết thư, chọn mở sau 1/3/6/12 tháng hoặc ngày tùy chọn; thư được niêm phong đến đúng ngày, khi đến hạn app báo trên trang chủ và màn chào.
