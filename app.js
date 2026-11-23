@@ -8,6 +8,7 @@
     home: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
     calendar: '<rect x="3" y="4.5" width="18" height="16.5" rx="3"/><path d="M8 2.5v4M16 2.5v4M3 9.5h18M7.5 13.5h2M11 13.5h2M14.5 13.5h2M7.5 17h2M11 17h2"/>',
     chart: '<path d="M4 20V11M9.5 20V5M15 20v-8M20.5 20V8"/>',
+    disk: '<ellipse cx="12" cy="5.5" rx="8" ry="3"/><path d="M4 5.5v6.5c0 1.66 3.58 3 8 3s8-1.34 8-3V5.5M4 12v6.5c0 1.66 3.58 3 8 3s8-1.34 8-3V12"/>',
     user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
@@ -101,9 +102,9 @@
     return { h: Math.floor(m / 60), m: m % 60 };
   }
 
-  const APP_VERSION = '1.22';
+  const APP_VERSION = '1.23';
   const APP_DATE = '23/11/2026';
-  const APP_NOTE = 'Màn chào gọn hơn: giữ 5 mặt cười tâm trạng, bỏ hàng chọn trạng thái';
+  const APP_NOTE = 'Thêm mục Bộ nhớ: xem app đang dùng bao nhiêu dung lượng máy, dọn ảnh thừa';
   let swReg = null;
 
   // ---------- State ----------
@@ -844,7 +845,18 @@
         t.onerror = () => rej(t.error);
       });
     };
-    return { put: (id, b) => tx('readwrite', (st) => st.put(b, id)), get: (id) => tx('readonly', (st) => st.get(id)), del: (id) => tx('readwrite', (st) => st.delete(id)) };
+    return {
+      put: (id, b) => tx('readwrite', (st) => st.put(b, id)), get: (id) => tx('readonly', (st) => st.get(id)), del: (id) => tx('readwrite', (st) => st.delete(id)),
+      // Danh sách [id, dung lượng] của mọi ảnh đã lưu
+      sizes: async () => {
+        const db = await open();
+        return new Promise((res, rej) => {
+          const out = [], rq = db.transaction('p', 'readonly').objectStore('p').openCursor();
+          rq.onsuccess = () => { const c = rq.result; if (!c) { res(out); return; } out.push([String(c.key), (c.value && c.value.size) || 0]); c.continue(); };
+          rq.onerror = () => rej(rq.error);
+        });
+      },
+    };
   })();
   const photoURLs = {};
   async function photoURL(id) {
@@ -2254,6 +2266,7 @@
       </div>
       <div class="list glass">
         <button class="menu-item" data-act="install"><span class="mi">${ic('phone')}</span><span class="grow">Cài lên màn hình chính</span><span class="chev">${ic('chevR')}</span></button>
+        <button class="menu-item" data-act="storage"><span class="mi">${ic('disk')}</span><span class="grow">Bộ nhớ đã dùng</span><span class="chev">${ic('chevR')}</span></button>
         <button class="menu-item" data-act="export"><span class="mi">${ic('download')}</span><span class="grow">Sao lưu dữ liệu</span><span class="chev">${ic('chevR')}</span></button>
         <button class="menu-item" data-act="import"><span class="mi">${ic('upload')}</span><span class="grow">Khôi phục dữ liệu</span><span class="chev">${ic('chevR')}</span></button>
         <button class="menu-item danger" data-act="reset"><span class="mi">${ic('trash')}</span><span class="grow">Xóa toàn bộ dữ liệu</span></button>
@@ -3273,6 +3286,88 @@
       </div>
       <p class="footnote">Sau khi cài, app mở toàn màn hình và dùng được cả khi không có mạng.</p>`);
   }
+  // ---------- Bộ nhớ đã dùng ----------
+  const fmtBytes = (n) => {
+    if (n < 1024) return `${n} B`;
+    const [v, u] = n < 1024 ** 2 ? [n / 1024, 'KB'] : n < 1024 ** 3 ? [n / 1024 ** 2, 'MB'] : [n / 1024 ** 3, 'GB'];
+    return `${(v >= 100 ? Math.round(v) : Math.round(v * 10) / 10).toString().replace('.', ',')} ${u}`;
+  };
+  const DATA_GROUPS = [
+    ['Công việc, Top 3', ['tasks', 'top3']], ['Nhật ký, tâm trạng', ['journal', 'customFeels']], ['Thu chi', ['money', 'budget']],
+    ['Lịch trực', ['duty', 'shift']], ['Thói quen', ['habits', 'habitLog']], ['Tủ lạnh, cần mua', ['fridge', 'shop', 'fridgeLog']],
+    ['Đọc sách', ['readLog', 'readDone', 'readSaved', 'customReads', 'readNotes']], ['Ngày quan trọng', ['events']], ['Thư gửi tương lai', ['letters']],
+    ['Chiến tích (chú thích)', ['wins']], ['Tập trung', ['focusLog']], ['Uống nước', ['water']],
+  ];
+  async function measureStorage() {
+    const enc = (x) => new Blob([JSON.stringify(x) || '']).size;
+    const raw = localStorage.getItem(STORE) || '';
+    const data = raw.length * 2; // localStorage lưu chữ dạng UTF-16
+    const used = new Set(), groups = DATA_GROUPS.map(([n, ks]) => { ks.forEach((k) => used.add(k)); return [n, ks.reduce((a, k) => a + (S[k] === undefined ? 0 : enc(S[k])), 0)]; });
+    groups.push(['Cài đặt và khác', Object.keys(S).filter((k) => !used.has(k)).reduce((a, k) => a + enc(S[k]), 0)]);
+    const jsonSize = groups.reduce((a, g) => a + g[1], 0) || 1;
+    let photos = [], cache = 0, est = null, persisted = null;
+    try { photos = await PhotoDB.sizes(); } catch { /* chưa có ảnh */ }
+    try {
+      if (window.caches) for (const name of await caches.keys()) {
+        const c = await caches.open(name);
+        for (const rq of await c.keys()) { const r = await c.match(rq); if (r) cache += (await r.clone().blob()).size; }
+      }
+    } catch { /* trình duyệt chặn đọc cache */ }
+    try { if (navigator.storage && navigator.storage.estimate) est = await navigator.storage.estimate(); } catch { /* không hỗ trợ */ }
+    try { if (navigator.storage && navigator.storage.persisted) persisted = await navigator.storage.persisted(); } catch { /* không hỗ trợ */ }
+    const winIds = new Set(S.wins.map((w) => w.id));
+    const photoBytes = photos.reduce((a, p) => a + p[1], 0), orphans = photos.filter(([id]) => !winIds.has(id));
+    return {
+      data, photoBytes, photoCount: photos.length, orphans, cache, est, persisted,
+      groups: groups.map(([n, b]) => [n, Math.round(b / jsonSize * data)]).filter((g) => g[1] >= 1024).sort((a, b) => b[1] - a[1]),
+    };
+  }
+  function storageSheet() {
+    openSheet(`<h3>Bộ nhớ đã dùng</h3><div id="stg"><div class="stg-load">${ic('disk')} Đang đo dung lượng…</div></div>`, async (sh) => {
+      const box = $('#stg', sh);
+      const draw = async () => {
+        const m = await measureStorage();
+        const ours = m.data + m.photoBytes + m.cache;
+        const total = m.est && m.est.usage ? Math.max(m.est.usage, ours) : ours;
+        const quota = m.est && m.est.quota ? m.est.quota : 0;
+        const LS_MAX = 5 * 1024 * 1024, lsPct = Math.min(100, Math.round(m.data / LS_MAX * 100));
+        const parts = [
+          ['Ảnh chiến tích', m.photoBytes, `${m.photoCount} ảnh`, '#18A957'],
+          ['Dữ liệu ghi chép', m.data, 'Việc, nhật ký, thu chi…', '#5fd68f'],
+          ['Bản lưu để chạy offline', m.cache, 'Tệp của app, tự cập nhật', '#b9df4f'],
+        ];
+        const other = total - ours;
+        if (other > 50 * 1024) parts.push(['Bộ nhớ hệ thống của trình duyệt', other, 'Chỉ mục, nhật ký cơ sở dữ liệu', '#9fb5a8']);
+        box.innerHTML = `<div class="stg-total glass">
+            <span>Ứng dụng đang dùng</span><b>${fmtBytes(total)}</b>
+            ${quota ? `<small>trên ${fmtBytes(quota)} trình duyệt cho phép · ${quota ? (total / quota * 100 < 0.1 ? '< 0,1' : (Math.round(total / quota * 1000) / 10).toString().replace('.', ',')) : ''}%</small>` : '<small>Máy không cho biết tổng dung lượng được phép</small>'}
+            <div class="stg-bar">${parts.map((p) => `<i style="flex:${Math.max(p[1], total * 0.01)};background:${p[3]}"></i>`).join('')}</div>
+          </div>
+          <div class="stg-list">${parts.map((p) => `<div class="stg-row"><span class="stg-dot" style="background:${p[3]}"></span><span class="grow"><b>${p[0]}</b><small>${p[2]}</small></span><em>${fmtBytes(p[1])}</em></div>`).join('')}</div>
+          <h4 class="stg-h">Chi tiết dữ liệu ghi chép</h4>
+          <div class="stg-ls"><div class="stg-lsb"><i style="width:${Math.max(lsPct, 1)}%" class="${lsPct >= 70 ? 'warn' : ''}"></i></div><small>${fmtBytes(m.data)} / khoảng 5 MB giới hạn cho dữ liệu chữ (${lsPct}%)</small></div>
+          <div class="stg-list sm">${m.groups.slice(0, 8).map(([n, b]) => `<div class="stg-row"><span class="grow">${n}</span><em>${fmtBytes(b)}</em></div>`).join('')}</div>
+          ${m.orphans.length ? `<button type="button" class="btn btn-ghost btn-block stg-act" data-clean>${ic('trash')} Dọn ${m.orphans.length} ảnh thừa · giải phóng ${fmtBytes(m.orphans.reduce((a, p) => a + p[1], 0))}</button>` : ''}
+          ${m.persisted === false ? `<button type="button" class="btn btn-ghost btn-block stg-act" data-persist>${ic('lock')} Xin giữ dữ liệu lâu dài</button><p class="stg-note">Khi máy sắp đầy, trình duyệt có thể tự xoá dữ liệu của web app ít dùng. Bật mục này để tránh, và nhớ <b>Sao lưu dữ liệu</b> thường xuyên.</p>`
+            : m.persisted ? `<p class="stg-note ok">${ic('check')} Dữ liệu được giữ lâu dài, trình duyệt sẽ không tự xoá khi máy đầy.</p>` : ''}
+          ${lsPct >= 70 ? `<p class="stg-note warn">Dữ liệu chữ sắp chạm giới hạn. Hãy sao lưu rồi xoá bớt nhật ký/thu chi cũ.</p>` : ''}`;
+        const cl = $('[data-clean]', box);
+        if (cl) cl.addEventListener('click', async () => {
+          cl.disabled = true;
+          for (const [id] of m.orphans) { try { await PhotoDB.del(id); } catch { /* bỏ qua */ } }
+          toast(`Đã dọn ${m.orphans.length} ảnh thừa`); draw();
+        });
+        const ps = $('[data-persist]', box);
+        if (ps) ps.addEventListener('click', async () => {
+          let ok = false; try { ok = await navigator.storage.persist(); } catch { /* không hỗ trợ */ }
+          toast(ok ? 'Đã bật giữ dữ liệu lâu dài' : 'Trình duyệt chưa cho phép. Hãy cài app lên màn hình chính rồi thử lại', null, ok ? 'ok' : undefined);
+          draw();
+        });
+      };
+      draw().catch(() => { box.innerHTML = '<p class="stg-note">Không đo được dung lượng trên trình duyệt này.</p>'; });
+    });
+  }
+
   function exportData() {
     const blob = new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
@@ -3479,6 +3574,7 @@
         break;
       case 'install': installSheet(); break;
       case 'export': exportData(); break;
+      case 'storage': storageSheet(); break;
       case 'import': importData(); break;
       case 'reset':
         if (confirm('Xóa toàn bộ công việc, dữ liệu tập trung và đọc sách? Không thể hoàn tác.')) {
