@@ -16,7 +16,7 @@
   - **Sáng** (mặc định sau 06:00): ngày dương/âm, ngày lễ, châm ngôn, “Hôm nay của bạn” (thư đến hạn, ngày quan trọng, ca trực, việc, tủ lạnh, thói quen, đọc sách), kết quả hôm qua.
   - **Trưa** (sau 13:00): tiến độ việc buổi sáng, việc buổi chiều, ca trực đang/sắp tới, thêm ly nước ngay tại chỗ, thói quen và phút đọc còn lại, mẹo nghỉ trưa.
   - **Tối** (sau 18:30): tổng kết số liệu trong ngày, lưu ảnh chiến tích, dời việc chưa xong, tổng kết nhật ký, xem trước ngày mai.
-  - Cả 3 màn đều có chọn nhanh trạng thái (biết ơn, mệt mỏi, căng thẳng…).
+  - Cả 3 màn đều có chọn nhanh tâm trạng (5 mức).
 - **Chiến tích hôm nay** (kiểu Locket): chụp hoặc chọn ảnh khoảnh khắc đáng tự hào, thêm chú thích; khung ảnh lớn trên trang chủ (vuốt ngang để xem các ảnh trong ngày, chú thích nền kính trong), lịch ảnh theo tháng, chuỗi ngày, xem toàn màn hình, chia sẻ. Ảnh lưu trong IndexedDB của thiết bị.
 - **Thư gửi bản thân tương lai**: viết thư, chọn mở sau 1/3/6/12 tháng hoặc ngày tùy chọn; thư được niêm phong đến đúng ngày, khi đến hạn app báo trên trang chủ và màn chào.
 - **Tab Tiện ích** gom các công cụ dưới đây cùng Thống kê, Nhật ký và Cá nhân. Nút **+** thêm theo ngữ cảnh trang đang mở; **giữ nút +** để mở menu thêm nhanh.
