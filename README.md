@@ -9,10 +9,14 @@
 - **Vuốt trên việc**: vuốt phải để hoàn thành, vuốt trái để xóa (việc lặp lại: bỏ qua lần này). Mọi thao tác xóa/dời/hoàn thành đều có nút **Hoàn tác**.
 - **Dời việc chưa xong sang ngày mai**: bấm “Dời sang mai” ở mục Việc của tôi, chọn việc muốn dời (gồm cả việc quá hạn), giữ nguyên giờ và chỗ trong Top 3, có Hoàn tác. Có thể bật **tự chuyển việc chưa xong sang hôm sau** trong trang Cá nhân.
 - **Top 3 hôm nay**: chọn 3 việc quan trọng nhất, ghim lên đầu trang chủ. Danh sách việc chia nhóm Quá hạn / Sáng / Chiều / Tối / Trong ngày / Đã xong.
-- **Uống nước** (đếm ly theo mục tiêu), **tâm trạng** 5 mức và **nhật ký** một dòng; buổi tối có **Tổng kết ngày** với 3 câu hỏi và tự thêm ưu tiên của ngày mai vào Top 3.
+- **Uống nước** (đếm ly theo mục tiêu), **tâm trạng** 5 mức kèm **20 biểu tượng trạng thái** (hạnh phúc, biết ơn, mệt mỏi, căng thẳng, ốm…, chọn nhiều mỗi ngày, tự tạo thêm trạng thái riêng, thống kê trạng thái hay gặp trong tháng) và **nhật ký** một dòng; buổi tối có **Tổng kết ngày** với 3 câu hỏi và tự thêm ưu tiên của ngày mai vào Top 3.
 - **Màn chào lần đầu**: hỏi tên, ảnh đại diện, thói quen muốn rèn và mục tiêu đọc sách, uống nước.
 - **Trang chủ tùy chỉnh**: bật/tắt và sắp xếp các khối (thống kê, mục tiêu, tiện ích ghim, uống nước, tâm trạng, nhắc nhở, thói quen, chiến tích, đọc sách, Top 3, việc); ghim tối đa 4 tiện ích hay dùng; thanh tiêu đề thu gọn khi cuộn; chuyển trang trượt theo hướng và giữ vị trí cuộn khi quay lại.
-- **Màn chào mỗi ngày**: lần đầu mở app trong ngày hiện ngày dương/âm, ngày lễ, châm ngôn, tóm tắt “Hôm nay của bạn” (thư đến hạn, ngày quan trọng, ca trực, việc, thói quen, đọc sách), kết quả hôm qua và chọn tâm trạng.
+- **Màn chào 3 lần mỗi ngày** (lần mở app đầu tiên sau mỗi mốc; giờ và bật/tắt từng màn chỉnh trong Cá nhân → Màn chào trong ngày, có nút Xem thử; mở app muộn thì chỉ hiện màn gần nhất):
+  - **Sáng** (mặc định sau 06:00): ngày dương/âm, ngày lễ, châm ngôn, “Hôm nay của bạn” (thư đến hạn, ngày quan trọng, ca trực, việc, tủ lạnh, thói quen, đọc sách), kết quả hôm qua.
+  - **Trưa** (sau 13:00): tiến độ việc buổi sáng, việc buổi chiều, ca trực đang/sắp tới, thêm ly nước ngay tại chỗ, thói quen và phút đọc còn lại, mẹo nghỉ trưa.
+  - **Tối** (sau 18:30): tổng kết số liệu trong ngày, lưu ảnh chiến tích, dời việc chưa xong, tổng kết nhật ký, xem trước ngày mai.
+  - Cả 3 màn đều chọn nhanh tâm trạng và trạng thái.
 - **Chiến tích hôm nay** (kiểu Locket): chụp hoặc chọn ảnh khoảnh khắc đáng tự hào, thêm chú thích; khung ảnh lớn trên trang chủ (vuốt ngang để xem các ảnh trong ngày, chú thích nền kính trong), lịch ảnh theo tháng, chuỗi ngày, xem toàn màn hình, chia sẻ. Ảnh lưu trong IndexedDB của thiết bị.
 - **Thư gửi bản thân tương lai**: viết thư, chọn mở sau 1/3/6/12 tháng hoặc ngày tùy chọn; thư được niêm phong đến đúng ngày, khi đến hạn app báo trên trang chủ và màn chào.
 - **Tab Tiện ích** gom các công cụ dưới đây cùng Thống kê, Nhật ký và Cá nhân. Nút **+** thêm theo ngữ cảnh trang đang mở; **giữ nút +** để mở menu thêm nhanh.

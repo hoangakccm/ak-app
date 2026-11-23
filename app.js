@@ -101,9 +101,9 @@
     return { h: Math.floor(m / 60), m: m % 60 };
   }
 
-  const APP_VERSION = '1.18';
-  const APP_DATE = '22/11/2026';
-  const APP_NOTE = 'Thêm tiện ích Tủ lạnh: theo dõi hạn dùng, danh sách cần mua';
+  const APP_VERSION = '1.19';
+  const APP_DATE = '23/11/2026';
+  const APP_NOTE = 'Thêm 20 biểu tượng trạng thái cho nhật ký; màn chào 3 lần mỗi ngày (sáng, trưa, tối)';
   let swReg = null;
 
   // ---------- State ----------
@@ -174,6 +174,20 @@
     S.fridge = Array.isArray(S.fridge) ? S.fridge : [];
     S.shop = Array.isArray(S.shop) ? S.shop : [];
     S.fridgeLog = Array.isArray(S.fridgeLog) ? S.fridgeLog : [];
+    S.customFeels = Array.isArray(S.customFeels) ? S.customFeels : [];
+    // Màn chào 3 lần/ngày: sáng, trưa, tối — giờ chỉnh được
+    const WC = { m: '06:00', n: '13:00', e: '18:30' };
+    S.welcomeCfg = S.welcomeCfg && typeof S.welcomeCfg === 'object' ? S.welcomeCfg : {};
+    Object.keys(WC).forEach((x) => { const c = S.welcomeCfg[x] || {}; S.welcomeCfg[x] = { on: c.on !== false, t: /^\d\d:\d\d$/.test(c.t || '') ? c.t : WC[x] }; });
+    if (!S.welcomeSeen || typeof S.welcomeSeen !== 'object' || !Array.isArray(S.welcomeSeen.s)) S.welcomeSeen = { d: '', s: [] };
+    if (S.lastWelcome) {
+      // Bản cũ chỉ chào 1 lần/ngày: nếu hôm nay đã chào thì coi như đã xem các mốc đã qua
+      if (S.lastWelcome === keyOf() && S.welcomeSeen.d !== S.lastWelcome) {
+        const n = new Date(), hm = `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`;
+        S.welcomeSeen = { d: S.lastWelcome, s: Object.keys(WC).filter((x) => S.welcomeCfg[x].t <= hm) };
+      }
+      delete S.lastWelcome;
+    }
   }
   normalize();
   const save = () => { try { localStorage.setItem(STORE, JSON.stringify(S)); } catch { toast('Không lưu được dữ liệu'); } };
@@ -206,6 +220,24 @@
   const waterOn = (k) => S.water[k] || 0;
   const MOODS = [{ e: '😞', l: 'Tệ' }, { e: '😕', l: 'Không vui' }, { e: '😐', l: 'Bình thường' }, { e: '🙂', l: 'Vui' }, { e: '😄', l: 'Tuyệt vời' }];
   const jour = (k) => (S.journal[k] = S.journal[k] || {});
+  // Biểu tượng trạng thái: chọn nhiều mỗi ngày, bổ sung cho 5 mức tâm trạng; có thể tự tạo thêm
+  const FEELS = [
+    ['happy', '🥰', 'Hạnh phúc'], ['calm', '😌', 'Bình yên'], ['energy', '💪', 'Tràn năng lượng'], ['grateful', '🙏', 'Biết ơn'],
+    ['proud', '😎', 'Tự hào'], ['excited', '🤩', 'Hào hứng'], ['loved', '🤗', 'Được yêu thương'], ['focus', '🎯', 'Tập trung'],
+    ['relaxed', '☕', 'Thư thái'], ['busy', '🏃', 'Bận rộn'], ['tired', '😫', 'Mệt mỏi'], ['sleepy', '😴', 'Buồn ngủ'],
+    ['stress', '😤', 'Căng thẳng'], ['anxious', '😰', 'Lo lắng'], ['sad', '😢', 'Buồn'], ['angry', '😠', 'Bực bội'],
+    ['bored', '🥱', 'Chán'], ['lonely', '🥺', 'Cô đơn'], ['confused', '😵‍💫', 'Rối bời'], ['sick', '🤒', 'Ốm'],
+  ];
+  const allFeels = () => [...FEELS.map(([id, e, l]) => ({ id, e, l })), ...S.customFeels.map((f) => ({ ...f, custom: true }))];
+  const feelOf = (id) => allFeels().find((f) => f.id === id);
+  const tagsOn = (k) => ((S.journal[k] || {}).tags || []).filter((id) => feelOf(id));
+  // Trạng thái hay dùng lên trước
+  function feelRank() {
+    const c = {};
+    Object.values(S.journal).forEach((j) => (j.tags || []).forEach((t) => { c[t] = (c[t] || 0) + 1; }));
+    return allFeels().map((f, i) => ({ f, i, n: c[f.id] || 0 })).sort((a, b) => b.n - a.n || a.i - b.i).map((x) => x.f);
+  }
+  const feelChip = (f, on, attr) => `<button type="button" class="feel ${on ? 'on' : ''}" ${attr} aria-pressed="${!!on}"><em>${f.e}</em><span>${esc(f.l)}</span></button>`;
   const focusOn = (k) => S.focusLog[k] || 0;
   const activeOn = (k) => doneOn(k) > 0 || focusOn(k) >= 60 || (S.readLog[k] || 0) >= 60;
   function streak() {
@@ -1145,43 +1177,142 @@
     if (first && navigator.vibrate) navigator.vibrate([20, 50, 20]);
   }
 
-  // ----- Màn chào khi mở app lần đầu trong ngày -----
-  function dailyWelcome() {
+  // ----- Màn chào: sáng / trưa / tối (lần mở app đầu tiên sau mỗi mốc giờ) -----
+  const WL_SLOTS = {
+    m: { n: 'Buổi sáng', i: 'sun', g: 'Chào buổi sáng', d: 'Kế hoạch, Top 3, ca trực, sự kiện trong ngày' },
+    n: { n: 'Buổi trưa', i: 'clock', g: 'Chào buổi trưa', d: 'Tiến độ buổi sáng, uống nước, việc buổi chiều' },
+    e: { n: 'Buổi tối', i: 'moon', g: 'Chào buổi tối', d: 'Tổng kết ngày, chiến tích, chuẩn bị ngày mai' },
+  };
+  const NOON_TIPS = [
+    'Chợp mắt 15–20 phút giúp buổi chiều tỉnh táo hơn hẳn.',
+    'Đứng dậy, vươn vai và đi lại vài phút cho máu lưu thông nhé.',
+    'Ăn trưa chậm rãi, nhai kỹ — đừng vừa ăn vừa lướt điện thoại.',
+    'Một ly nước lúc này giúp tránh cơn buồn ngủ đầu giờ chiều.',
+    'Nhìn ra xa 20 giây để mắt được nghỉ sau buổi sáng làm việc.',
+    'Việc khó nhất buổi chiều? Làm nó ngay sau giờ nghỉ, khi đầu óc còn tươi.',
+    'Hít sâu 4 giây, giữ 4 giây, thở ra 6 giây — lặp lại 5 lần.',
+  ];
+  const hmNow = () => { const d = new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+  const slotsDue = (t = hmNow()) => Object.keys(WL_SLOTS).filter((x) => S.welcomeCfg[x].on && S.welcomeCfg[x].t <= t)
+    .sort((a, b) => S.welcomeCfg[a].t.localeCompare(S.welcomeCfg[b].t));
+  function markSlotsSeen(list) {
     const k = keyOf();
-    if (!S.onboarded || S.lastWelcome === k || $('.onboard')) return;
-    S.lastWelcome = k; save();
-    const d = dateOf(k), y = addDays(k, -1), yl = tasksOn(y), yDone = yl.filter((t) => t.done).length;
-    const list = tasksOn(k), top = top3Keys(k).length, hol = holidaysOn(k), evs = upcomingEvents(3);
-    const duty = dutyOf(k).filter((x) => !x.off), letter = dueLetters()[0];
-    const habitsDue = S.habits.filter((h) => hDue(h, k)).length, q = quoteOfDay(), jm = (S.journal[k] || {}).mood;
+    if (S.welcomeSeen.d !== k) S.welcomeSeen = { d: k, s: [] };
+    S.welcomeSeen.s = [...new Set([...S.welcomeSeen.s, ...list])];
+    save();
+  }
+  // Gọi khi mở app / quay lại app / mỗi phút: hiện mốc gần nhất chưa xem (bỏ qua các mốc cũ hơn)
+  function dailyWelcome() {
+    if (!S.onboarded || $('.onboard') || $('.welcome') || $('.sheet') || R || $('.lv') || $('.pv')) return;
+    const due = slotsDue();
+    if (!due.length) return;
+    const last = due[due.length - 1], seen = S.welcomeSeen.d === keyOf() ? S.welcomeSeen.s : [];
+    if (seen.includes(last)) return;
+    markSlotsSeen(due);
+    showWelcome(last);
+  }
+
+  function showWelcome(slot = 'm', preview = false) {
+    const k = keyOf(), d = dateOf(k), tmr = addDays(k, 1), cfg = WL_SLOTS[slot];
     const WDF = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+    const j = S.journal[k] || {}, jm = j.mood, tags = tagsOn(k);
+    const list = tasksOn(k), done = list.filter((t) => t.done).length, letter = dueLetters()[0];
+    const w = waterOn(k), rd = Math.round(readOn(k) / 60), hol = holidaysOn(k), q = quoteOfDay();
+    const hdue = S.habits.filter((h) => hDue(h, k)), hok = hdue.filter((h) => hDone(h, k)).length;
     const row = (i, b, sub, act) => `<${act ? `button data-wl="${act}"` : 'div'} class="wl-row"><span class="wl-ri">${ic(i)}</span><span><b>${b}</b>${sub ? `<small>${sub}</small>` : ''}</span>${act ? ic('chevR') : ''}</${act ? 'button' : 'div'}>`;
-    const rows = [
-      letter ? row('envelope', 'Bạn có thư từ quá khứ!', `Viết ngày ${fmtDMY(letter.created)} · chạm để mở`, 'letter') : '',
-      ...evs.map(({ e, next }) => row('gift', esc(e.title), next === k ? 'Hôm nay' : cdText(daysBetween(k, next)).replace(/^./, (c) => c.toUpperCase()))),
-      ...duty.map((x) => row('duty', esc(x.label), `${x.time}${x.nextDay ? ' · rạng sáng hôm sau' : ''}`)),
-      row('list', list.length ? `${list.length} việc hôm nay` : 'Chưa có việc nào hôm nay', list.length ? (top ? `${top} việc trong Top 3` : 'Chạm để chọn Top 3') : 'Chạm để thêm việc', list.length ? (top ? '' : 'top3') : 'task'),
-      fUrgent().length ? row('fridge', `${fUrgent().length} món trong tủ lạnh cần dùng sớm`, fUrgent().slice(0, 3).map((x) => esc(x.name)).join(', ')) : '',
-      habitsDue ? row('sprout', `${habitsDue} thói quen cần giữ`, 'Mỗi ngày một chút') : '',
-      row('book', `${S.readGoal} phút đọc sách`, featuredLesson() ? esc(featuredLesson().title) : ''),
-    ].join('');
-    const el = document.createElement('div');
-    el.className = 'welcome';
-    el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-label', 'Chào ngày mới');
-    el.innerHTML = `<div class="wl-wrap">
-      <div class="wl-hero">
-        <span class="wl-greet">${greeting()}, ${esc(S.name || 'bạn')} 👋</span>
+    const letterRow = letter ? row('envelope', 'Bạn có thư từ quá khứ!', `Viết ngày ${fmtDMY(letter.created)} · chạm để mở`, 'letter') : '';
+    const fridgeRow = fUrgent().length ? row('fridge', `${fUrgent().length} món trong tủ lạnh cần dùng sớm`, fUrgent().slice(0, 3).map((x) => esc(x.name)).join(', ')) : '';
+    const tName = (t) => `${t.time ? `${t.time} ` : ''}${esc(t.title)}`;
+    let hero, body, goLbl;
+    if (slot === 'm') {
+      const y = addDays(k, -1), yl = tasksOn(y), yDone = yl.filter((t) => t.done).length;
+      const top = top3Keys(k).length, evs = upcomingEvents(3), duty = dutyOf(k).filter((x) => !x.off);
+      hero = `<div class="wl-hero">
+        <span class="wl-greet">${cfg.g}, ${esc(S.name || 'bạn')} 👋</span>
         <span class="wl-wd">${WDF[d.getDay()]}</span>
         <b class="wl-day">${d.getDate()}</b>
         <span class="wl-month">Tháng ${d.getMonth() + 1}, ${d.getFullYear()}</span>
         <span class="wl-lunar">${ic('moonstar')} ${lunarFull(k)}</span>
         ${hol.map((h) => `<span class="wl-hol">${holiIcon(h.i)}${h.n}</span>`).join('')}
+      </div>`;
+      body = `<div class="wl-quote">“${esc(q.t)}”<span>— ${esc(q.a)}</span></div>
+        <div class="wl-card"><h4>Hôm nay của bạn</h4>${[
+          letterRow,
+          ...evs.map(({ e, next }) => row('gift', esc(e.title), next === k ? 'Hôm nay' : cdText(daysBetween(k, next)).replace(/^./, (c) => c.toUpperCase()))),
+          ...duty.map((x) => row('duty', esc(x.label), `${x.time}${x.nextDay ? ' · rạng sáng hôm sau' : ''}`)),
+          row('list', list.length ? `${list.length} việc hôm nay` : 'Chưa có việc nào hôm nay', list.length ? (top ? `${top} việc trong Top 3` : 'Chạm để chọn Top 3') : 'Chạm để thêm việc', list.length ? (top ? '' : 'top3') : 'task'),
+          fridgeRow,
+          hdue.length ? row('sprout', `${hdue.length} thói quen cần giữ`, 'Mỗi ngày một chút') : '',
+          row('book', `${S.readGoal} phút đọc sách`, featuredLesson() ? esc(featuredLesson().title) : ''),
+        ].join('')}</div>
+        ${yl.length ? `<p class="wl-y">Hôm qua bạn đã xong ${yDone}/${yl.length} việc${readOn(y) >= 60 ? ` và đọc ${Math.round(readOn(y) / 60)} phút sách` : ''}. ${yDone === yl.length ? 'Tuyệt vời, giữ phong độ nhé!' : 'Hôm nay mình làm tiếp nào!'}</p>` : ''}`;
+      goLbl = `Bắt đầu ngày mới ${ic('arrowR')}`;
+    } else {
+      hero = `<div class="wl-hero sm">
+        <span class="wl-slot">${ic(cfg.i)} ${cfg.n} · ${hmNow()}</span>
+        <b class="wl-hi">${cfg.g},<br>${esc(S.name || 'bạn')} ${slot === 'n' ? '☀️' : '🌙'}</b>
+        <span class="wl-month">${WDF[d.getDay()]}, ${fmtDMY(k)}</span>
+        <span class="wl-lunar">${ic('moonstar')} ${lunarFull(k)}</span>
+      </div>`;
+      const pct = list.length ? Math.round(done / list.length * 100) : 0;
+      if (slot === 'n') {
+        const left = list.filter((t) => !t.done && (!t.time || t.time >= '12:00')).sort(byTime);
+        const now = Date.now(), near = nearDuty(), cur = near.find((x) => x.start <= now), nx = near.find((x) => x.start > now && keyOf(new Date(x.start)) === k);
+        const evNow = upcomingEvents(1).filter(({ next }) => next === k);
+        body = `<div class="wl-prog">
+            <div class="wl-pt"><b>${done}<small>/${list.length}</small></b><span>${list.length ? (done === list.length ? 'Xong hết việc hôm nay rồi! 🎉' : `việc đã xong · ${pct}%`) : 'Chưa có việc nào hôm nay'}</span></div>
+            <div class="wl-bar"><i style="width:${pct}%"></i></div>
+          </div>
+          <div class="wl-card"><h4>Buổi chiều</h4>${[
+            letterRow,
+            ...evNow.map(({ e }) => row('gift', esc(e.title), 'Hôm nay')),
+            cur ? row('duty', `Đang trực · ${esc(cur.label)}`, `Đến ${cur.s.end}`) : nx ? row('duty', `Ca tới · ${esc(nx.label)}`, `Bắt đầu ${nx.s.start}`) : '',
+            row('list', left.length ? `${left.length} việc cho buổi chiều` : 'Buổi chiều đang trống', left.length ? left.slice(0, 3).map(tName).join(' · ') : 'Chạm để thêm việc', left.length ? 'today' : 'task'),
+            `<button data-wl="water" class="wl-row"><span class="wl-ri">${ic('drop')}</span><span><b data-w>${w}/${S.waterGoal} ly nước</b><small data-ws>${w >= S.waterGoal ? 'Đủ nước rồi, giỏi lắm! 💧' : 'Chạm để thêm 1 ly'}</small></span><span class="wl-plus">${ic('plus', 'stroke-width="2.6"')}</span></button>`,
+            hdue.length && hok < hdue.length ? row('sprout', `${hdue.length - hok} thói quen chưa xong`, hdue.filter((h) => !hDone(h, k)).slice(0, 3).map((h) => `${h.icon} ${esc(h.name)}`).join(' · '), 'habits') : '',
+            rd < S.readGoal ? row('book', `Còn ${S.readGoal - rd} phút đọc sách`, featuredLesson() ? esc(featuredLesson().title) : '', 'read') : '',
+            fridgeRow,
+          ].join('')}</div>
+          <div class="wl-quote tip">${ic('sparkle')}<span class="wl-tip">${NOON_TIPS[dateOf(k).getDate() % NOON_TIPS.length]}</span></div>`;
+        goLbl = `Tiếp tục buổi chiều ${ic('arrowR')}`;
+      } else {
+        const cands = rollCandidates(k), wins = winsOn(k), tl = tasksOn(tmr), tduty = dutyOf(tmr).filter((x) => !x.off);
+        const tevs = upcomingEvents(2).filter(({ next }) => next === tmr), thol = holidaysOn(tmr);
+        const stat = (v, l) => `<div><b>${v}</b><span>${l}</span></div>`;
+        body = `<div class="wl-stats">
+            ${stat(`${done}/${list.length}`, 'việc xong')}${stat(`${rd}′`, 'đọc sách')}${stat(`${w}/${S.waterGoal}`, 'ly nước')}${hdue.length ? stat(`${hok}/${hdue.length}`, 'thói quen') : ''}
+          </div>
+          <div class="wl-card"><h4>Khép lại hôm nay</h4>${[
+            letterRow,
+            wins.length ? row('wins', `${wins.length} chiến tích hôm nay 🔥`, 'Chạm để xem lại', 'wins')
+              : `<label class="wl-row"><span class="wl-ri">${ic('camera')}</span><span><b>Lưu chiến tích hôm nay</b><small>Một bức ảnh cho điều bạn tự hào</small></span>${ic('chevR')}<input type="file" accept="image/*" data-win-input hidden></label>`,
+            cands.length ? row('repeat', `${cands.length} việc chưa xong`, 'Chạm để dời sang ngày mai', 'roll') : list.length ? row('check', 'Không còn việc tồn đọng', 'Xuất sắc!') : '',
+            row('journal', j.reviewed ? 'Đã tổng kết ngày' : 'Tổng kết ngày', j.reviewed ? 'Chạm để xem lại' : 'Làm tốt gì, cần tốt hơn gì, mai ưu tiên gì', 'review'),
+          ].join('')}</div>
+          <div class="wl-card"><h4>Ngày mai · ${WDF[dateOf(tmr).getDay()]} ${fmtDM(tmr)}</h4>${[
+            ...thol.map((h) => `<div class="wl-row"><span class="wl-ri">${holiIcon(h.i)}</span><span><b>${h.n}</b><small>${lunarFull(tmr)}</small></span></div>`),
+            ...tevs.map(({ e }) => row('gift', esc(e.title), 'Ngày mai')),
+            ...tduty.map((x) => row('duty', esc(x.label), `${x.time}${x.nextDay ? ' · rạng sáng hôm sau' : ''}`)),
+            row('list', tl.length ? `${tl.length} việc đã lên lịch` : 'Chưa có việc cho ngày mai', tl.length ? tl.slice(0, 3).map(tName).join(' · ') : 'Chạm để lên kế hoạch', 'plan'),
+          ].join('')}</div>`;
+        goLbl = `Chúc ngủ ngon ${ic('moon')}`;
+      }
+    }
+    const moodQ = slot === 'm' ? 'Sáng nay bạn thấy thế nào?' : slot === 'n' ? 'Buổi sáng của bạn thế nào?' : 'Hôm nay của bạn thế nào?';
+    const feels = feelRank().slice(0, 8);
+    tags.forEach((id) => { if (!feels.some((f) => f.id === id)) feels.unshift(feelOf(id)); });
+    const el = document.createElement('div');
+    el.className = `welcome wl-${slot}`;
+    el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-label', cfg.g);
+    el.innerHTML = `<div class="wl-wrap">
+      ${preview ? '<span class="wl-prev">Xem thử</span>' : ''}
+      ${hero}
+      ${body}
+      <div class="wl-mood"><span>${moodQ}</span>
+        <div class="moods">${MOODS.map((m, i) => `<button class="${jm === i + 1 ? 'on' : ''}" data-wl-mood="${i + 1}" aria-label="${m.l}">${m.e}</button>`).join('')}</div>
+        <div class="wl-feels">${feels.map((f) => feelChip(f, tags.includes(f.id), `data-wl-feel="${f.id}"`)).join('')}<button type="button" class="feel feel-more" data-wl="feels">${ic('plus')}<span>Khác</span></button></div>
       </div>
-      <div class="wl-quote">“${esc(q.t)}”<span>— ${esc(q.a)}</span></div>
-      <div class="wl-card"><h4>Hôm nay của bạn</h4>${rows}</div>
-      ${yl.length ? `<p class="wl-y">Hôm qua bạn đã xong ${yDone}/${yl.length} việc${readOn(y) >= 60 ? ` và đọc ${Math.round(readOn(y) / 60)} phút sách` : ''}. ${yDone === yl.length ? 'Tuyệt vời, giữ phong độ nhé!' : 'Hôm nay mình làm tiếp nào!'}</p>` : ''}
-      <div class="wl-mood"><span>Bạn thấy thế nào?</span><div class="moods">${MOODS.map((m, i) => `<button class="${jm === i + 1 ? 'on' : ''}" data-wl-mood="${i + 1}" aria-label="${m.l}">${m.e}</button>`).join('')}</div></div>
-      <button class="btn wl-go" data-wl="go">Bắt đầu ngày mới ${ic('arrowR')}</button>
+      <button class="btn wl-go" data-wl="go">${goLbl}</button>
     </div>`;
     const close = (after) => {
       el.classList.add('closing'); document.body.classList.remove('reading');
@@ -1189,13 +1320,123 @@
     };
     el.addEventListener('click', (e) => {
       const m = e.target.closest('[data-wl-mood]');
-      if (m) { jour(k).mood = +m.dataset.wlMood; save(); $$('[data-wl-mood]', el).forEach((x) => x.classList.toggle('on', x === m)); return; }
+      if (m) { const jj = jour(k), v = +m.dataset.wlMood; jj.mood = jj.mood === v ? undefined : v; save(); $$('[data-wl-mood]', el).forEach((x) => x.classList.toggle('on', jj.mood === +x.dataset.wlMood)); return; }
+      const f = e.target.closest('[data-wl-feel]');
+      if (f) { const on = toggleFeel(k, f.dataset.wlFeel); f.classList.toggle('on', on); f.setAttribute('aria-pressed', on); return; }
       const b = e.target.closest('[data-wl]'); if (!b) return;
       const a = b.dataset.wl;
-      close(a === 'letter' ? () => openLetter(letter.id) : a === 'top3' ? top3Sheet : a === 'task' ? () => taskSheet() : null);
+      if (a === 'water') {
+        const n = waterOn(k) + 1; S.water[k] = n; save();
+        $('[data-w]', b).textContent = `${n}/${S.waterGoal} ly nước`;
+        $('[data-ws]', b).textContent = n >= S.waterGoal ? 'Đủ nước rồi, giỏi lắm! 💧' : 'Chạm để thêm 1 ly';
+        b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop');
+        return;
+      }
+      const after = {
+        letter: () => openLetter(letter.id), top3: top3Sheet, task: () => taskSheet(), plan: () => taskSheet(null, tmr),
+        feels: () => feelSheet(k), roll: rollSheet, review: () => reviewSheet(k),
+        read: () => go('read'), habits: () => go('habits'), wins: () => go('wins'), today: () => { if (ui.tab !== 'home') go('home'); },
+      }[a];
+      close(after || null);
+    });
+    el.addEventListener('change', (e) => {
+      if (!e.target.matches('[data-win-input]')) return;
+      const file = e.target.files[0]; e.target.value = '';
+      if (file) close(() => winFromFile(file));
     });
     document.body.append(el);
     document.body.classList.add('reading');
+  }
+
+  function welcomeSheet() {
+    const draw = () => Object.entries(WL_SLOTS).map(([x, c]) => { const o = S.welcomeCfg[x]; return `<div class="wc-row ${o.on ? '' : 'off'}" data-s="${x}">
+        <div class="wc-top"><span class="wc-ic wc-${x}">${ic(c.i)}</span><span class="wc-t"><b>${c.n}</b><small>${c.d}</small></span>
+          <button type="button" class="switch ${o.on ? 'on' : ''}" role="switch" aria-checked="${o.on}" aria-label="Bật màn chào ${c.n.toLowerCase()}" data-tg><i></i></button></div>
+        <div class="wc-bot"><label>Hiện sau <input type="time" class="input wc-time" value="${o.t}" ${o.on ? '' : 'disabled'}></label>
+          <button type="button" class="btn btn-ghost wc-try" data-try>${ic('play')} Xem thử</button></div>
+      </div>`; }).join('');
+    openSheet(`<h3>Màn chào trong ngày</h3>
+      <p class="page-sub" style="margin:-10px 0 16px">Hiện khi bạn mở app lần đầu sau mỗi mốc giờ. Mở app muộn thì chỉ hiện màn gần nhất.</p>
+      <div class="wc-list" id="wcl">${draw()}</div>
+      <button type="button" class="btn btn-ghost btn-block" data-wc-reset style="margin-top:6px">${ic('reset')} Khôi phục 06:00 · 13:00 · 18:30</button>`, (sh) => {
+      const list = $('#wcl', sh);
+      const unsee = (x) => { if (S.welcomeSeen.d === keyOf() && S.welcomeCfg[x].t > hmNow()) S.welcomeSeen.s = S.welcomeSeen.s.filter((y) => y !== x); };
+      list.addEventListener('click', (e) => {
+        const r = e.target.closest('.wc-row'); if (!r) return;
+        const x = r.dataset.s;
+        if (e.target.closest('[data-tg]')) {
+          S.welcomeCfg[x].on = !S.welcomeCfg[x].on; unsee(x); save(); list.innerHTML = draw();
+          toast(`${S.welcomeCfg[x].on ? 'Đã bật' : 'Đã tắt'} màn chào ${WL_SLOTS[x].n.toLowerCase()}`);
+        } else if (e.target.closest('[data-try]')) {
+          closeSheet(); setTimeout(() => showWelcome(x, true), 280);
+        }
+      });
+      list.addEventListener('change', (e) => {
+        if (!e.target.matches('.wc-time') || !e.target.value) return;
+        const x = e.target.closest('.wc-row').dataset.s;
+        S.welcomeCfg[x].t = e.target.value; unsee(x); save();
+        toast(`Màn chào ${WL_SLOTS[x].n.toLowerCase()} hiện sau ${e.target.value}`);
+      });
+      $('[data-wc-reset]', sh).addEventListener('click', () => {
+        S.welcomeCfg = { m: { on: true, t: '06:00' }, n: { on: true, t: '13:00' }, e: { on: true, t: '18:30' } };
+        Object.keys(WL_SLOTS).forEach(unsee); save(); list.innerHTML = draw(); toast('Đã khôi phục giờ mặc định');
+      });
+    }, () => setTimeout(render, 0));
+  }
+
+  // ----- Chọn trạng thái -----
+  function toggleFeel(k, id) {
+    const j = jour(k), t = j.tags || [];
+    j.tags = t.includes(id) ? t.filter((x) => x !== id) : [...t, id];
+    if (!j.tags.length) delete j.tags;
+    save();
+    return !!(j.tags && j.tags.includes(id));
+  }
+  const feelGrid = (sel) => allFeels().map((f) => `<span class="feel-w">${feelChip(f, sel.includes(f.id), `data-f="${f.id}"`)}${f.custom ? `<button type="button" class="feel-x" data-fdel="${f.id}" aria-label="Xoá trạng thái ${esc(f.l)}">${ic('x', 'stroke-width="3"')}</button>` : ''}</span>`).join('');
+  const feelPickerHTML = (sel) => `<div class="feels" data-fp>${feelGrid(sel)}</div>
+    <div class="feel-new"><input class="input fe" maxlength="8" placeholder="🙂" aria-label="Biểu tượng (emoji)"><input class="input fl" maxlength="20" placeholder="Tự tạo trạng thái mới…" aria-label="Tên trạng thái"><button type="button" class="btn btn-primary" data-fadd aria-label="Thêm trạng thái">${ic('plus', 'stroke-width="2.6"')}</button></div>`;
+  // sel: mảng id đang chọn (được sửa trực tiếp); onChange gọi sau mỗi lần chọn/bỏ
+  function bindFeelPicker(root, sel, onChange) {
+    const grid = $('[data-fp]', root), fe = $('.fe', root), fl = $('.fl', root);
+    const redraw = () => { grid.innerHTML = feelGrid(sel); };
+    const add = () => {
+      const l = fl.value.trim(); if (!l) { fl.focus(); return; }
+      const e = fe.value.trim() || '🏷️';
+      const ex = allFeels().find((f) => f.l.toLowerCase() === l.toLowerCase());
+      const id = ex ? ex.id : `c${uid()}`;
+      if (!ex) S.customFeels.push({ id, e, l });
+      if (!sel.includes(id)) sel.push(id);
+      save(); fe.value = ''; fl.value = ''; redraw(); onChange && onChange();
+      toast(ex ? `Đã chọn “${l}”` : `Đã tạo trạng thái ${e} ${l}`);
+    };
+    grid.addEventListener('click', (e) => {
+      const del = e.target.closest('[data-fdel]');
+      if (del) {
+        const id = del.dataset.fdel, f = S.customFeels.find((x) => x.id === id);
+        S.customFeels = S.customFeels.filter((x) => x.id !== id);
+        const i = sel.indexOf(id); if (i >= 0) sel.splice(i, 1);
+        save(); redraw(); onChange && onChange();
+        toast(`Đã xoá trạng thái “${f ? f.l : ''}”`, { fn: () => { S.customFeels.push(f); save(); redraw(); } });
+        return;
+      }
+      const b = e.target.closest('[data-f]'); if (!b) return;
+      const id = b.dataset.f, i = sel.indexOf(id);
+      if (i >= 0) sel.splice(i, 1); else sel.push(id);
+      b.classList.toggle('on', i < 0); b.setAttribute('aria-pressed', i < 0);
+      onChange && onChange();
+    });
+    $('[data-fadd]', root).addEventListener('click', add);
+    fl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } });
+  }
+  function feelSheet(k = keyOf()) {
+    const sel = tagsOn(k).slice();
+    openSheet(`<h3>Trạng thái ${k === keyOf() ? 'hôm nay' : `· ${dayLabel(k)}`}</h3>
+      <p class="page-sub" style="margin:-10px 0 14px">Chọn bao nhiêu tuỳ thích. Có thể tự tạo trạng thái của riêng bạn.</p>
+      ${feelPickerHTML(sel)}
+      <button type="button" class="btn btn-primary btn-block" data-done style="margin-top:14px">Xong</button>`, (sh) => {
+      bindFeelPicker(sh, sel, () => { const j = jour(k); if (sel.length) j.tags = sel.slice(); else delete j.tags; save(); });
+      $('[data-done]', sh).addEventListener('click', () => { closeSheet(); render(); });
+    }, () => setTimeout(render, 0));
   }
 
   // ================= Tủ lạnh =================
@@ -1439,6 +1680,7 @@
       mood: `<div class="mood glass">
           <div class="mood-h"><span>Hôm nay bạn thấy thế nào?</span><button class="link" data-act="go-journal">${ic('journal')} Nhật ký</button></div>
           <div class="moods">${MOODS.map((m, i) => `<button class="${jt.mood === i + 1 ? 'on' : ''}" data-act="mood" data-v="${i + 1}" aria-label="${m.l}" title="${m.l}">${m.e}</button>`).join('')}</div>
+          <button class="feels-row" data-act="feels" aria-label="Chọn trạng thái hôm nay">${tagsOn(today).map((id) => { const f = feelOf(id); return `<span class="feel on sm"><em>${f.e}</em><span>${esc(f.l)}</span></span>`; }).join('')}<span class="feel add sm">${ic('plus', 'stroke-width="2.6"')}<span>${tagsOn(today).length ? 'Sửa' : 'Thêm trạng thái: mệt, biết ơn, căng thẳng…'}</span></span></button>
           ${jt.mood ? `<button class="mood-note" data-act="review">${jt.note ? `“${esc(jt.note)}”` : `${ic('edit')} Viết một dòng cho hôm nay…`}</button>` : ''}
         </div>`,
       alerts: [
@@ -1598,7 +1840,10 @@
     const moods = days.map((k) => (S.journal[k] || {}).mood || 0);
     const rated = days.filter((k) => k <= today).map((k) => (S.journal[k] || {}).mood).filter(Boolean);
     const avg = rated.length ? rated.reduce((a, b) => a + b, 0) / rated.length : 0;
-    const entries = Object.keys(S.journal).filter((k) => { const j = S.journal[k]; return j.mood || j.note || j.good || j.better || j.tomorrow; }).sort().reverse();
+    const entries = Object.keys(S.journal).filter((k) => { const j = S.journal[k]; return j.mood || j.note || j.good || j.better || j.tomorrow || tagsOn(k).length; }).sort().reverse();
+    const mk = today.slice(0, 7), cnt = {};
+    Object.keys(S.journal).filter((k) => k.startsWith(mk)).forEach((k) => tagsOn(k).forEach((t) => { cnt[t] = (cnt[t] || 0) + 1; }));
+    const topF = Object.entries(cnt).sort((a, b) => b[1] - a[1]).slice(0, 6);
     const qa = (q, a) => (a ? `<div class="qa"><span>${q}</span><p>${esc(a)}</p></div>` : '');
     return `${subHead('Nhật ký', 'Tâm trạng và những dòng ghi chép mỗi ngày.')}
       <div class="card glass">
@@ -1606,11 +1851,17 @@
         <div class="mood-grid">${['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'].map((d) => `<b>${d}</b>`).join('')}
           ${days.map((k, i) => `<span class="md ${k === today ? 'today' : ''} ${k > today ? 'future' : ''}" title="${dayLabel(k)}">${moods[i] ? MOODS[moods[i] - 1].e : dateOf(k).getDate()}</span>`).join('')}</div>
       </div>
+      <div class="card glass">
+        <div class="card-head"><h4>Trạng thái tháng ${+mk.slice(5)}</h4><button class="link" data-act="feels">${ic('plus')} Hôm nay</button></div>
+        ${topF.length ? `<div class="feel-stat">${topF.map(([id, n]) => { const f = feelOf(id); return `<div class="fs"><em>${f.e}</em><span class="fs-l"><b>${esc(f.l)}</b><i><u style="width:${Math.round(n / topF[0][1] * 100)}%"></u></i></span><small>${n} ngày</small></div>`; }).join('')}</div>`
+          : `<p class="fs-empty">Chưa ghi trạng thái nào trong tháng. Chạm “Hôm nay” để chọn: biết ơn, mệt mỏi, tràn năng lượng…</p>`}
+      </div>
       <button class="btn btn-primary btn-block" data-act="review" style="margin-bottom:22px">${ic('moon')} ${S.journal[today] && S.journal[today].reviewed ? 'Sửa tổng kết hôm nay' : 'Tổng kết hôm nay'}</button>
       ${entries.length ? entries.map((k) => {
         const j = S.journal[k];
         return `<button class="entry glass" data-act="review" data-day="${k}">
           <div class="entry-h"><span class="entry-m">${j.mood ? MOODS[j.mood - 1].e : '📝'}</span><b>${dayLabel(k)}</b><span>${pad(dateOf(k).getDate())}/${pad(dateOf(k).getMonth() + 1)}/${dateOf(k).getFullYear()}</span></div>
+          ${tagsOn(k).length ? `<div class="entry-tags">${tagsOn(k).map((id) => { const f = feelOf(id); return `<span>${f.e} ${esc(f.l)}</span>`; }).join('')}</div>` : ''}
           ${j.note ? `<p class="entry-note">“${esc(j.note)}”</p>` : ''}
           ${qa('Làm tốt', j.good)}${qa('Cần tốt hơn', j.better)}${qa('Ưu tiên ngày mai', j.tomorrow)}
         </button>`;
@@ -2002,6 +2253,7 @@
         <button class="menu-item" data-act="preset"><span class="mi">${ic('clock')}</span><span class="grow">Thời lượng tập trung</span><span class="hint">${S.focusPreset} phút</span></button>
         <button class="menu-item" data-act="auto-roll" role="switch" aria-checked="${!!S.autoRoll}"><span class="mi">${ic('repeat')}</span><span class="grow">Tự chuyển việc chưa xong sang hôm sau</span><span class="switch ${S.autoRoll ? 'on' : ''}"><i></i></span></button>
         <button class="menu-item" data-act="water-goal"><span class="mi">${ic('drop')}</span><span class="grow">Mục tiêu uống nước</span><span class="hint">${S.waterGoal} ly</span></button>
+        <button class="menu-item" data-act="welcome-cfg"><span class="mi">${ic('sun')}</span><span class="grow">Màn chào trong ngày</span><span class="hint">${Object.keys(WL_SLOTS).filter((x) => S.welcomeCfg[x].on).map((x) => S.welcomeCfg[x].t).join(' · ') || 'Tắt'}</span></button>
         <button class="menu-item" data-act="go-journal"><span class="mi">${ic('journal')}</span><span class="grow">Nhật ký tâm trạng</span><span class="chev">${ic('chevR')}</span></button>
         <button class="menu-item" data-act="read-goal"><span class="mi">${ic('book')}</span><span class="grow">Mục tiêu đọc mỗi ngày</span><span class="hint">${S.readGoal} phút</span></button>
       </div>
@@ -2297,6 +2549,7 @@
     openSheet(`
       <h3>${isToday ? 'Tổng kết hôm nay' : `Nhật ký · ${dayLabel(k)}`}</h3>
       <div class="field"><span>Tâm trạng</span><div class="moods big" id="jm">${MOODS.map((m, i) => `<button type="button" class="${j.mood === i + 1 ? 'on' : ''}" data-v="${i + 1}" aria-label="${m.l}"><em>${m.e}</em><small>${m.l}</small></button>`).join('')}</div></div>
+      <div class="field"><span>Trạng thái</span>${feelPickerHTML(tagsOn(k))}</div>
       <form id="jf" autocomplete="off">
         <label class="field"><span>Một dòng cho ${isToday ? 'hôm nay' : 'ngày này'}</span><input class="input" name="note" maxlength="160" value="${esc(j.note || '')}" placeholder="Điều đáng nhớ nhất…"></label>
         <label class="field"><span>Mình đã làm tốt điều gì?</span><textarea class="input" name="good" rows="2">${esc(j.good || '')}</textarea></label>
@@ -2306,6 +2559,8 @@
         <button class="btn btn-primary btn-block" type="submit">Lưu nhật ký</button>
       </form>`, (sh) => {
       let mood = j.mood || 0;
+      const tagSel = tagsOn(k).slice();
+      bindFeelPicker(sh, tagSel);
       $('#jm', sh).addEventListener('click', (e) => {
         const b = e.target.closest('button'); if (!b) return;
         mood = +b.dataset.v; $$('#jm button', sh).forEach((x) => x.classList.toggle('on', x === b));
@@ -2314,6 +2569,7 @@
         e.preventDefault();
         const f = e.target, v = (n) => f[n].value.trim();
         const e2 = { ...j, mood: mood || undefined, note: v('note'), good: v('good'), better: v('better'), tomorrow: v('tomorrow') };
+        if (tagSel.length) e2.tags = tagSel.slice(); else delete e2.tags;
         e2.reviewed = !!(e2.good || e2.better || e2.tomorrow) || !!j.reviewed;
         if (f.addtask && f.addtask.checked && e2.tomorrow) {
           const tmr = addDays(k, 1), id = uid();
@@ -3065,6 +3321,8 @@
       case 'go': go(b.dataset.to); break;
       case 'pin': if (togglePin(b.dataset.id)) render(); break;
       case 'home-edit': homeEditSheet(); break;
+      case 'feels': feelSheet(); break;
+      case 'welcome-cfg': welcomeSheet(); break;
       case 'f-zone': ui.fZone = b.dataset.z; render(); break;
       case 'f-new': fridgeSheet(); break;
       case 'f-edit': fridgeSheet(S.fridge.find((x) => x.id === b.dataset.id)); break;
@@ -3256,7 +3514,8 @@
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
     if (S.timer && S.timer.endsAt) ensureTick();
-    if (keyOf() !== lastDay) { lastDay = keyOf(); ui.calSel = lastDay; ui.calWeek = mondayOf(lastDay); autoRollover(); dailyWelcome(); }
+    if (keyOf() !== lastDay) { lastDay = keyOf(); ui.calSel = lastDay; ui.calWeek = mondayOf(lastDay); autoRollover(); }
+    dailyWelcome();
     if (R) { R.last = Date.now(); updateReadUI(); }
     if (!$('.sheet') && !R) render();
   });
@@ -3361,7 +3620,8 @@
         data.name = v;
       }
       if (step < steps.length - 1) { step++; draw(); return; }
-      Object.assign(S, { name: data.name, avatar: { type: 'emoji', value: data.avatar }, readGoal: data.readGoal, waterGoal: data.waterGoal, onboarded: true, lastWelcome: keyOf() });
+      Object.assign(S, { name: data.name, avatar: { type: 'emoji', value: data.avatar }, readGoal: data.readGoal, waterGoal: data.waterGoal, onboarded: true });
+      markSlotsSeen(slotsDue());
       data.habits.forEach(([n, e], i) => S.habits.push({ id: uid(), name: n, icon: e, color: HABIT_COLORS[i % HABIT_COLORS.length], days: ALL_DAYS.slice(), target: 1, created: keyOf() }));
       save();
       document.body.classList.remove('reading');
@@ -3381,13 +3641,15 @@
   if (!S.onboarded) onboarding();
   autoRollover();
   dailyWelcome();
+  // Mở app liên tục qua mốc giờ (vd. 13:00) thì cũng hiện màn chào, trừ khi đang nhập dở
+  setInterval(() => { if (!document.hidden) dailyWelcome(); }, 60000);
   if (S.timer && S.timer.endsAt) ensureTick();
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     // Tự kiểm tra bản mới mỗi khi mở lại app; có bản mới thì tải lại ngay (hoặc hỏi nếu đang nhập dở)
     const hadController = !!navigator.serviceWorker.controller;
     navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => {
       swReg = reg;
-      document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
+      document.addEventListener('visibilitychange', () => { if (!document.hidden && reg && reg.update) reg.update().catch(() => {}); });
     }).catch(() => {});
     let reloading = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
