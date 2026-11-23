@@ -101,9 +101,9 @@
     return { h: Math.floor(m / 60), m: m % 60 };
   }
 
-  const APP_VERSION = '1.19';
+  const APP_VERSION = '1.20';
   const APP_DATE = '23/11/2026';
-  const APP_NOTE = 'Thêm 20 biểu tượng trạng thái cho nhật ký; màn chào 3 lần mỗi ngày (sáng, trưa, tối)';
+  const APP_NOTE = 'Màn chào gọn hơn: bỏ phần chọn trạng thái';
   let swReg = null;
 
   // ---------- State ----------
@@ -1215,7 +1215,7 @@
   function showWelcome(slot = 'm', preview = false) {
     const k = keyOf(), d = dateOf(k), tmr = addDays(k, 1), cfg = WL_SLOTS[slot];
     const WDF = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
-    const j = S.journal[k] || {}, jm = j.mood, tags = tagsOn(k);
+    const j = S.journal[k] || {}, jm = j.mood;
     const list = tasksOn(k), done = list.filter((t) => t.done).length, letter = dueLetters()[0];
     const w = waterOn(k), rd = Math.round(readOn(k) / 60), hol = holidaysOn(k), q = quoteOfDay();
     const hdue = S.habits.filter((h) => hDue(h, k)), hok = hdue.filter((h) => hDone(h, k)).length;
@@ -1299,8 +1299,6 @@
       }
     }
     const moodQ = slot === 'm' ? 'Sáng nay bạn thấy thế nào?' : slot === 'n' ? 'Buổi sáng của bạn thế nào?' : 'Hôm nay của bạn thế nào?';
-    const feels = feelRank().slice(0, 8);
-    tags.forEach((id) => { if (!feels.some((f) => f.id === id)) feels.unshift(feelOf(id)); });
     const el = document.createElement('div');
     el.className = `welcome wl-${slot}`;
     el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-label', cfg.g);
@@ -1310,7 +1308,6 @@
       ${body}
       <div class="wl-mood"><span>${moodQ}</span>
         <div class="moods">${MOODS.map((m, i) => `<button class="${jm === i + 1 ? 'on' : ''}" data-wl-mood="${i + 1}" aria-label="${m.l}">${m.e}</button>`).join('')}</div>
-        <div class="wl-feels">${feels.map((f) => feelChip(f, tags.includes(f.id), `data-wl-feel="${f.id}"`)).join('')}<button type="button" class="feel feel-more" data-wl="feels">${ic('plus')}<span>Khác</span></button></div>
       </div>
       <button class="btn wl-go" data-wl="go">${goLbl}</button>
     </div>`;
@@ -1321,8 +1318,6 @@
     el.addEventListener('click', (e) => {
       const m = e.target.closest('[data-wl-mood]');
       if (m) { const jj = jour(k), v = +m.dataset.wlMood; jj.mood = jj.mood === v ? undefined : v; save(); $$('[data-wl-mood]', el).forEach((x) => x.classList.toggle('on', jj.mood === +x.dataset.wlMood)); return; }
-      const f = e.target.closest('[data-wl-feel]');
-      if (f) { const on = toggleFeel(k, f.dataset.wlFeel); f.classList.toggle('on', on); f.setAttribute('aria-pressed', on); return; }
       const b = e.target.closest('[data-wl]'); if (!b) return;
       const a = b.dataset.wl;
       if (a === 'water') {
@@ -1334,7 +1329,7 @@
       }
       const after = {
         letter: () => openLetter(letter.id), top3: top3Sheet, task: () => taskSheet(), plan: () => taskSheet(null, tmr),
-        feels: () => feelSheet(k), roll: rollSheet, review: () => reviewSheet(k),
+        roll: rollSheet, review: () => reviewSheet(k),
         read: () => go('read'), habits: () => go('habits'), wins: () => go('wins'), today: () => { if (ui.tab !== 'home') go('home'); },
       }[a];
       close(after || null);
