@@ -182,6 +182,7 @@ window.READINGS = [
     key: ['Não có xu hướng chú ý đến điều tiêu cực; biết ơn giúp cân bằng lại.', 'Biết ơn là thói quen có thể luyện tập mỗi ngày.', 'Lời cảm ơn cụ thể có sức mạnh hơn lời cảm ơn chung chung.'],
     action: 'Gửi một tin nhắn cảm ơn đến một người đã từng giúp đỡ bạn.',
     question: 'Ba điều bạn biết ơn nhất trong tuần này là gì?',
+    tool: 'gratitude', toolName: 'trang Biết ơn', toolText: 'Viết 3 điều biết ơn mỗi tối, soạn lời cảm ơn rõ ràng và gửi tin cảm ơn người bạn chưa kịp nói.',
   },
   {
     id: 'r09', cat: 'self', title: 'Khoảng dừng trước khi phản ứng',

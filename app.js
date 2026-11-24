@@ -8,6 +8,7 @@
     home: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
     calendar: '<rect x="3" y="4.5" width="18" height="16.5" rx="3"/><path d="M8 2.5v4M16 2.5v4M3 9.5h18M7.5 13.5h2M11 13.5h2M14.5 13.5h2M7.5 17h2M11 17h2"/>',
     chart: '<path d="M4 20V11M9.5 20V5M15 20v-8M20.5 20V8"/>',
+    heart: '<path d="M12 20.5s-7.5-4.6-7.5-10.4A4.4 4.4 0 0 1 12 7.3a4.4 4.4 0 0 1 7.5 2.8c0 5.8-7.5 10.4-7.5 10.4z"/>',
     disk: '<ellipse cx="12" cy="5.5" rx="8" ry="3"/><path d="M4 5.5v6.5c0 1.66 3.58 3 8 3s8-1.34 8-3V5.5M4 12v6.5c0 1.66 3.58 3 8 3s8-1.34 8-3V12"/>',
     user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
@@ -102,9 +103,9 @@
     return { h: Math.floor(m / 60), m: m % 60 };
   }
 
-  const APP_VERSION = '1.23';
-  const APP_DATE = '23/11/2026';
-  const APP_NOTE = 'Thêm mục Bộ nhớ: xem app đang dùng bao nhiêu dung lượng máy, dọn ảnh thừa';
+  const APP_VERSION = '1.24';
+  const APP_DATE = '24/11/2026';
+  const APP_NOTE = 'Thêm tiện ích Biết ơn: 3 điều biết ơn mỗi tối, soạn lời cảm ơn, danh sách lời cảm ơn chưa kịp nói';
   let swReg = null;
 
   // ---------- State ----------
@@ -176,6 +177,7 @@
     S.shop = Array.isArray(S.shop) ? S.shop : [];
     S.fridgeLog = Array.isArray(S.fridgeLog) ? S.fridgeLog : [];
     S.customFeels = Array.isArray(S.customFeels) ? S.customFeels : [];
+    S.thanks = Array.isArray(S.thanks) ? S.thanks : [];
     // Màn chào 3 lần/ngày: sáng, trưa, tối — giờ chỉnh được
     const WC = { m: '06:00', n: '13:00', e: '18:30' };
     S.welcomeCfg = S.welcomeCfg && typeof S.welcomeCfg === 'object' ? S.welcomeCfg : {};
@@ -488,6 +490,7 @@
         ${bodyHTML(L.body)}
         ${L.key && L.key.length ? `<div class="r-box"><h4>${ic('sparkle')} Ý chính</h4><ul>${L.key.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
         ${L.action ? `<div class="r-box"><h4>${ic('target')} Thử ngay hôm nay</h4><p>${esc(L.action)}</p><button class="btn btn-ghost" data-r="task">${ic('plus')} Thêm vào việc hôm nay</button></div>` : ''}
+        ${L.tool && VIEWS[L.tool] ? `<div class="r-box r-tool"><h4>${ic('heart')} Thực hành trong app</h4><p>${esc(L.toolText || 'Mở công cụ để thực hành ngay.')}</p><button class="btn btn-primary" data-r="tool">${ic('arrowR')} Mở ${esc(L.toolName || 'công cụ')}</button></div>` : ''}
         <div class="r-box"><h4>${ic('edit')} Suy ngẫm</h4>${L.question ? `<p>${esc(L.question)}</p>` : ''}
           <textarea class="input r-note" id="r-note" rows="4" placeholder="Ghi lại suy nghĩ của bạn…">${esc(S.readNotes[L.id] || '')}</textarea></div>
         <div id="r-end">${doneBtn}</div>
@@ -540,6 +543,7 @@
     const L = allReads().find((x) => x.id === R.id);
     switch (b.dataset.r) {
       case 'close': closeReader(); break;
+      case 'tool': { const t = L.tool; closeReader(); setTimeout(() => go(t), 60); break; }
       case 'font':
         S.readFont = S.readFont >= 21 ? 15 : S.readFont + 2;
         R.el.style.setProperty('--rfs', S.readFont + 'px'); save();
@@ -1299,6 +1303,8 @@
             wins.length ? row('wins', `${wins.length} chiến tích hôm nay 🔥`, 'Chạm để xem lại', 'wins')
               : `<label class="wl-row"><span class="wl-ri">${ic('camera')}</span><span><b>Lưu chiến tích hôm nay</b><small>Một bức ảnh cho điều bạn tự hào</small></span>${ic('chevR')}<input type="file" accept="image/*" data-win-input hidden></label>`,
             cands.length ? row('repeat', `${cands.length} việc chưa xong`, 'Chạm để dời sang ngày mai', 'roll') : list.length ? row('check', 'Không còn việc tồn đọng', 'Xuất sắc!') : '',
+            (() => { const g = gratOn(k).length; return row('heart', g >= 3 ? 'Đã viết 3 điều biết ơn' : `Ba điều biết ơn hôm nay · ${g}/3`, g >= 3 ? 'Chạm để xem lại' : 'Càng cụ thể càng tốt', 'grat'); })(),
+            (() => { const t = S.thanks.filter((x) => x.status === 'todo'); return t.length ? row('share', `${t.length} lời cảm ơn chưa gửi`, t.slice(0, 2).map((x) => esc(x.who)).join(', '), 'grat') : ''; })(),
             row('journal', j.reviewed ? 'Đã tổng kết ngày' : 'Tổng kết ngày', j.reviewed ? 'Chạm để xem lại' : 'Làm tốt gì, cần tốt hơn gì, mai ưu tiên gì', 'review'),
           ].join('')}</div>
           <div class="wl-card"><h4>Ngày mai · ${WDF[dateOf(tmr).getDay()]} ${fmtDM(tmr)}</h4>${[
@@ -1342,7 +1348,7 @@
       const after = {
         letter: () => openLetter(letter.id), top3: top3Sheet, task: () => taskSheet(), plan: () => taskSheet(null, tmr),
         roll: rollSheet, review: () => reviewSheet(k),
-        read: () => go('read'), habits: () => go('habits'), wins: () => go('wins'), today: () => { if (ui.tab !== 'home') go('home'); },
+        read: () => go('read'), habits: () => go('habits'), grat: () => go('gratitude'), wins: () => go('wins'), today: () => { if (ui.tab !== 'home') go('home'); },
       }[a];
       close(after || null);
     });
@@ -1847,7 +1853,7 @@
     const moods = days.map((k) => (S.journal[k] || {}).mood || 0);
     const rated = days.filter((k) => k <= today).map((k) => (S.journal[k] || {}).mood).filter(Boolean);
     const avg = rated.length ? rated.reduce((a, b) => a + b, 0) / rated.length : 0;
-    const entries = Object.keys(S.journal).filter((k) => { const j = S.journal[k]; return j.mood || j.note || j.good || j.better || j.tomorrow || tagsOn(k).length; }).sort().reverse();
+    const entries = Object.keys(S.journal).filter((k) => { const j = S.journal[k]; return j.mood || j.note || j.good || j.better || j.tomorrow || tagsOn(k).length || gratOn(k).length; }).sort().reverse();
     const mk = today.slice(0, 7), cnt = {};
     Object.keys(S.journal).filter((k) => k.startsWith(mk)).forEach((k) => tagsOn(k).forEach((t) => { cnt[t] = (cnt[t] || 0) + 1; }));
     const topF = Object.entries(cnt).sort((a, b) => b[1] - a[1]).slice(0, 6);
@@ -1870,6 +1876,7 @@
           <div class="entry-h"><span class="entry-m">${j.mood ? MOODS[j.mood - 1].e : '📝'}</span><b>${dayLabel(k)}</b><span>${pad(dateOf(k).getDate())}/${pad(dateOf(k).getMonth() + 1)}/${dateOf(k).getFullYear()}</span></div>
           ${tagsOn(k).length ? `<div class="entry-tags">${tagsOn(k).map((id) => { const f = feelOf(id); return `<span>${f.e} ${esc(f.l)}</span>`; }).join('')}</div>` : ''}
           ${j.note ? `<p class="entry-note">“${esc(j.note)}”</p>` : ''}
+          ${gratOn(k).length ? `<div class="qa"><span>Biết ơn</span><ol class="qa-g">${gratOn(k).map((x) => `<li>${esc(x)}</li>`).join('')}</ol></div>` : ''}
           ${qa('Làm tốt', j.good)}${qa('Cần tốt hơn', j.better)}${qa('Ưu tiên ngày mai', j.tomorrow)}
         </button>`;
       }).join('') : `<div class="empty glass"><div class="big">📓</div>Chưa có trang nhật ký nào.<br>Chọn tâm trạng ở trang chủ để bắt đầu.</div>`}`;
@@ -2024,6 +2031,7 @@
     const winsToday = S.wins.filter((w) => w.date === k).length;
     const tiles = [
       ['wins', 'Chiến tích', 'wins', '', winsToday ? `Hôm nay ${winsToday} ảnh · chuỗi ${winStreak()} ngày` : 'Chụp khoảnh khắc tự hào'],
+      ['gratitude', 'Biết ơn', 'heart', '', (() => { const n = gratOn(k).length, st = gratStreak(), td = S.thanks.filter((x) => x.status === 'todo').length; return n >= 3 ? `Đủ 3 điều hôm nay${st > 1 ? ` · chuỗi ${st} ngày` : ''}` : n ? `Hôm nay ${n}/3 điều` : td ? `${td} lời cảm ơn chưa gửi` : 'Ba điều biết ơn mỗi tối'; })()],
       ['letters', 'Thư tương lai', 'envelope', '', dueL ? `${dueL} thư đã đến ngày mở` : sealedL ? `${sealedL} thư đang niêm phong` : 'Viết cho mình mai sau'],
       ['habits', 'Thói quen', 'sprout', '', S.habits.length ? `${doneH}/${dueH.length} hôm nay` : 'Tạo thói quen đầu tiên'],
       ['money', 'Thu chi', 'wallet', '', S.money.length ? `Hôm nay ${fmtShort(outToday)} · Tháng ${fmtShort(outMonth)}` : 'Ghi chi tiêu nhanh'],
@@ -2036,6 +2044,127 @@
       ['profile', 'Cá nhân', 'user', '', `Hồ sơ, mục tiêu, sao lưu · Phiên bản ${APP_VERSION}`],
     ];
     return { tiles, dueL };
+  }
+
+  // ================= Biết ơn =================
+  const gratOn = (k) => ((S.journal[k] || {}).grat || []).filter((x) => x && x.trim());
+  function setGrat(k, list) {
+    const j = jour(k), g = list.map((x) => (x || '').trim()).slice(0, 3);
+    if (g.some(Boolean)) j.grat = g; else delete j.grat;
+  }
+  // Chuỗi ngày viết đủ 3 điều (tính đến hôm nay, hoặc hôm qua nếu hôm nay chưa viết đủ)
+  function gratStreak() {
+    let k = keyOf(), n = 0;
+    if (gratOn(k).length < 3) k = addDays(k, -1);
+    while (gratOn(k).length >= 3) { n++; k = addDays(k, -1); }
+    return n;
+  }
+  const GRAT_HINTS = ['Một người đã giúp bạn hôm nay…', 'Một điều nhỏ khiến bạn mỉm cười…', 'Một điều bạn thường coi là hiển nhiên…'];
+  const thankText = (x) => `Cảm ơn ${x.who.trim()} đã ${x.what.trim().replace(/[.!]+$/, '')}${x.result && x.result.trim() ? `, nhờ vậy ${x.result.trim().replace(/[.!]+$/, '')}` : ''}.`;
+  const thankHTML = (x) => `<div class="th-item ${x.status}">
+      <span class="th-av">${esc((x.who.trim().split(/\s+/).pop() || '?').charAt(0).toUpperCase())}</span>
+      <div class="th-b"><b>${esc(x.who)}</b><p>“${esc(thankText(x))}”</p>
+        ${x.status !== 'todo' ? `<small>${x.status === 'sent' ? 'Đã gửi tin' : 'Đã nói trực tiếp'} · ${fmtDMY(x.doneAt || x.created)}</small>` : `<small>Lưu ngày ${fmtDMY(x.created)}</small>`}</div>
+      ${x.status === 'todo' ? `<button class="btn btn-primary th-go" data-act="thank-edit" data-id="${x.id}">${ic('share')} Gửi</button>` : `<button class="icon-btn th-more" data-act="thank-edit" data-id="${x.id}" aria-label="Xem lại">${ic('chevR')}</button>`}
+    </div>`;
+  function viewGratitude() {
+    const k = keyOf(), g = (S.journal[k] || {}).grat || [], n = gratOn(k).length, st = gratStreak();
+    const total = Object.keys(S.journal).reduce((a, d) => a + gratOn(d).length, 0);
+    const done = S.thanks.filter((x) => x.status !== 'todo'), todo = S.thanks.filter((x) => x.status === 'todo');
+    const past = Object.keys(S.journal).filter((d) => d < k && gratOn(d).length).sort().reverse().slice(0, 14);
+    const eve = new Date().getHours() >= 18;
+    return `${subHead('Biết ơn', 'Ba cách thực hành lòng biết ơn mỗi ngày.')}
+      <div class="gr-stats glass">
+        <div><b>${st}</b><span>ngày liên tiếp</span></div><div><b>${total}</b><span>điều biết ơn</span></div><div><b>${done.length}</b><span>lời cảm ơn</span></div>
+      </div>
+
+      <section class="gr-card glass ${eve && n < 3 ? 'hot' : ''}">
+        <div class="gr-h"><span class="gr-n">1</span><div><h4>Ba điều biết ơn hôm nay</h4><p>Mỗi tối viết ra 3 điều, càng cụ thể càng tốt.</p></div><em class="gr-cnt ${n >= 3 ? 'ok' : ''}">${n}/3</em></div>
+        <form id="grat-f" class="gr-list" autocomplete="off">
+          ${[0, 1, 2].map((i) => `<label class="gr-in"><span>${i + 1}</span><textarea class="input" rows="1" name="g${i}" maxlength="200" placeholder="${GRAT_HINTS[i]}">${esc(g[i] || '')}</textarea></label>`).join('')}
+          <p class="gr-tip">${ic('sparkle')} Thay vì “gia đình”, hãy viết “mẹ gọi điện hỏi mình đã ăn tối chưa”.</p>
+          <button class="btn btn-primary btn-block" type="submit">${n ? 'Cập nhật' : 'Lưu ba điều biết ơn'}</button>
+        </form>
+      </section>
+
+      <section class="gr-card glass">
+        <div class="gr-h"><span class="gr-n">2</span><div><h4>Nói lời cảm ơn rõ ràng</h4><p>Cảm ơn ai, vì việc gì, nhờ vậy điều gì tốt đẹp đã xảy ra.</p></div></div>
+        <div class="gr-ex">“Cảm ơn <u>anh</u> đã <u>giúp em sửa file</u>, nhờ vậy <u>em kịp nộp</u>.”</div>
+        <button class="btn btn-ghost btn-block" data-act="thank-new">${ic('edit')} Soạn lời cảm ơn</button>
+      </section>
+
+      <section class="gr-card glass">
+        <div class="gr-h"><span class="gr-n">3</span><div><h4>Lời cảm ơn chưa kịp nói</h4><p>Nghĩ về một người từng giúp bạn mà bạn chưa cảm ơn, rồi gửi họ một tin nhắn.</p></div></div>
+        ${todo.length ? `<div class="th-list">${todo.map(thankHTML).join('')}</div>` : '<p class="gr-empty">Chưa có ai trong danh sách. Thầy cô cũ, đồng nghiệp từng chỉ việc, người hàng xóm…</p>'}
+        <button class="btn btn-ghost btn-block" data-act="thank-new" data-later="1">${ic('plus')} Thêm người cần cảm ơn</button>
+        ${done.length ? `<details class="th-done"><summary>Đã cảm ơn (${done.length})</summary><div class="th-list">${done.slice().reverse().map(thankHTML).join('')}</div></details>` : ''}
+      </section>
+
+      ${past.length ? `<div class="section-head"><h3>Những ngày trước</h3></div>${past.map((d) => `<div class="gr-day glass"><b>${dayLabel(d)} · ${fmtDM(d)}</b><ol>${gratOn(d).map((x) => `<li>${esc(x)}</li>`).join('')}</ol></div>`).join('')}` : ''}`;
+  }
+  // Soạn lời cảm ơn (thực hành 2) hoặc lời cảm ơn chưa kịp nói (thực hành 3)
+  function thankSheet(id, later) {
+    const old = S.thanks.find((x) => x.id === id);
+    const d = old ? { ...old } : { who: '', what: '', result: '' };
+    const WHO = ['anh', 'chị', 'em', 'bạn', 'mẹ', 'bố', 'thầy', 'cô', 'chú', 'bác', 'ông', 'bà'];
+    openSheet(`<h3>${old ? (old.status === 'todo' ? 'Gửi lời cảm ơn' : 'Lời cảm ơn') : later ? 'Người cần cảm ơn' : 'Soạn lời cảm ơn'}</h3>
+      <form id="thf" autocomplete="off">
+        <label class="field"><span>Cảm ơn ai?</span><input class="input" name="who" maxlength="40" required value="${esc(d.who)}" placeholder="Ví dụ: anh Tuấn, cô Lan"></label>
+        <div class="chips sm th-who">${WHO.map((w) => `<button type="button" class="chip" data-w="${w}">${w}</button>`).join('')}</div>
+        <label class="field"><span>Họ đã làm gì cho bạn?</span><textarea class="input" name="what" rows="2" maxlength="160" required placeholder="giúp em sửa file báo cáo">${esc(d.what)}</textarea></label>
+        <label class="field"><span>Nhờ vậy điều gì tốt đẹp đã xảy ra?</span><textarea class="input" name="result" rows="2" maxlength="160" placeholder="em kịp nộp đúng hạn">${esc(d.result || '')}</textarea></label>
+        <div class="th-prev"><small>Lời cảm ơn của bạn</small><p id="thp"></p></div>
+        <div class="th-acts">
+          <button type="button" class="btn btn-primary" data-th="send">${ic('share')} Gửi tin nhắn</button>
+          <button type="button" class="btn btn-ghost" data-th="copy">${ic('dots')} Chép</button>
+        </div>
+        <div class="th-acts">
+          <button type="button" class="btn btn-ghost" data-th="said">${ic('check')} Đã nói trực tiếp</button>
+          <button type="button" class="btn btn-ghost" data-th="later">${ic('clock')} Để gửi sau</button>
+        </div>
+        ${old ? `<button type="button" class="btn btn-danger btn-block" data-th="del" style="margin-top:10px">${ic('trash')} Xoá</button>` : ''}
+      </form>`, (sh) => {
+      const f = $('#thf', sh), prev = $('#thp', sh);
+      const val = () => ({ who: f.who.value.trim(), what: f.what.value.trim(), result: f.result.value.trim() });
+      const draw = () => { const v = val(); prev.textContent = v.who || v.what ? thankText({ who: v.who || '…', what: v.what || '…', result: v.result }) : 'Điền thông tin bên trên để xem lời cảm ơn.'; };
+      draw();
+      f.addEventListener('input', draw);
+      $('.th-who', sh).addEventListener('click', (e) => {
+        const b = e.target.closest('[data-w]'); if (!b) return;
+        const rest = f.who.value.trim().replace(new RegExp(`^(${WHO.join('|')})\\s*`, 'i'), '');
+        f.who.value = `${b.dataset.w}${rest ? ` ${rest}` : ''}`; f.who.focus(); draw();
+      });
+      const store = (status) => {
+        const v = val();
+        if (!v.who || !v.what) { toast('Điền người và việc họ đã làm nhé'); (v.who ? f.what : f.who).focus(); return null; }
+        const x = old || { id: uid(), created: keyOf() };
+        Object.assign(x, v, { status, doneAt: status === 'todo' ? null : keyOf() });
+        if (!old) S.thanks.push(x);
+        save(); return x;
+      };
+      f.addEventListener('submit', (e) => e.preventDefault());
+      f.addEventListener('click', async (e) => {
+        const b = e.target.closest('[data-th]'); if (!b) return;
+        const a = b.dataset.th;
+        if (a === 'del') { S.thanks = S.thanks.filter((x) => x.id !== old.id); save(); closeSheet(); render(); toast('Đã xoá', { fn: () => { S.thanks.push(old); save(); render(); } }); return; }
+        const v = val();
+        if (a === 'copy' || a === 'send') {
+          if (!v.who || !v.what) { store('todo'); return; }
+          const text = thankText(v);
+          if (a === 'send' && navigator.share) {
+            try { await navigator.share({ text }); } catch (err) { if (err && err.name === 'AbortError') return; }
+          } else {
+            try { await navigator.clipboard.writeText(text); } catch { /* không chép được */ }
+            if (a === 'copy') { toast('Đã chép. Dán vào Zalo, Messenger hoặc tin nhắn nhé'); return; }
+            toast('Đã chép lời cảm ơn. Dán vào ứng dụng nhắn tin để gửi');
+          }
+          if (store('sent')) { closeSheet(); render(); celebrate('Bạn vừa gửi đi một lời cảm ơn 💚'); }
+          return;
+        }
+        if (a === 'said' && store('said')) { closeSheet(); render(); celebrate('Lời cảm ơn rõ ràng làm cả hai cùng vui 💚'); }
+        if (a === 'later' && store('todo')) { closeSheet(); render(); toast(`Đã lưu: cảm ơn ${v.who}`); }
+      });
+    }, () => setTimeout(render, 0));
   }
 
   function viewTools() {
@@ -2279,7 +2408,7 @@
       <p class="footnote">Dữ liệu được lưu riêng trên thiết bị này.</p>`;
   }
 
-  const VIEWS = { home: viewHome, calendar: viewCalendar, read: viewRead, tools: viewTools, analytics: viewAnalytics, profile: viewProfile, journal: viewJournal, habits: viewHabits, events: viewEvents, lunar: viewLunar, money: viewMoney, shift: viewShift, wins: viewWins, letters: viewLetters, fridge: viewFridge };
+  const VIEWS = { home: viewHome, calendar: viewCalendar, read: viewRead, tools: viewTools, analytics: viewAnalytics, profile: viewProfile, journal: viewJournal, habits: viewHabits, events: viewEvents, lunar: viewLunar, money: viewMoney, shift: viewShift, wins: viewWins, letters: viewLetters, fridge: viewFridge, gratitude: viewGratitude };
   const MAIN_TABS = ['home', 'calendar', 'read', 'tools'];
 
   function render(animate = false) {
@@ -2560,6 +2689,7 @@
       <div class="field"><span>Trạng thái</span>${feelPickerHTML(tagsOn(k))}</div>
       <form id="jf" autocomplete="off">
         <label class="field"><span>Một dòng cho ${isToday ? 'hôm nay' : 'ngày này'}</span><input class="input" name="note" maxlength="160" value="${esc(j.note || '')}" placeholder="Điều đáng nhớ nhất…"></label>
+        <div class="field"><span>Ba điều biết ơn hôm nay</span><div class="gr-mini">${[0, 1, 2].map((i) => `<input class="input" name="gr${i}" maxlength="200" value="${esc(((j.grat || [])[i]) || '')}" placeholder="${i + 1}. ${GRAT_HINTS[i]}">`).join('')}</div></div>
         <label class="field"><span>Mình đã làm tốt điều gì?</span><textarea class="input" name="good" rows="2">${esc(j.good || '')}</textarea></label>
         <label class="field"><span>Điều gì có thể làm tốt hơn?</span><textarea class="input" name="better" rows="2">${esc(j.better || '')}</textarea></label>
         <label class="field"><span>Ngày mai, việc quan trọng nhất là gì?</span><input class="input" name="tomorrow" maxlength="120" value="${esc(j.tomorrow || '')}"></label>
@@ -2578,6 +2708,8 @@
         const f = e.target, v = (n) => f[n].value.trim();
         const e2 = { ...j, mood: mood || undefined, note: v('note'), good: v('good'), better: v('better'), tomorrow: v('tomorrow') };
         if (tagSel.length) e2.tags = tagSel.slice(); else delete e2.tags;
+        const gr = [v('gr0'), v('gr1'), v('gr2')];
+        if (gr.some(Boolean)) e2.grat = gr; else delete e2.grat;
         e2.reviewed = !!(e2.good || e2.better || e2.tomorrow) || !!j.reviewed;
         if (f.addtask && f.addtask.checked && e2.tomorrow) {
           const tmr = addDays(k, 1), id = uid();
@@ -2663,11 +2795,11 @@
   }
 
   function quickAddSheet() {
-    const items = [['task', 'Công việc', 'list'], ['money', 'Khoản chi / thu', 'plus'], ['habit', 'Thói quen', 'repeat'], ['event', 'Ngày quan trọng', 'gift'], ['journal', 'Nhật ký hôm nay', 'journal'], ['letter', 'Thư gửi tương lai', 'envelope'], ['fridge', 'Đồ vào tủ lạnh', 'fridge']];
+    const items = [['task', 'Công việc', 'list'], ['money', 'Khoản chi / thu', 'plus'], ['habit', 'Thói quen', 'repeat'], ['event', 'Ngày quan trọng', 'gift'], ['journal', 'Nhật ký hôm nay', 'journal'], ['thank', 'Lời cảm ơn', 'heart'], ['letter', 'Thư gửi tương lai', 'envelope'], ['fridge', 'Đồ vào tủ lạnh', 'fridge']];
     openSheet(`<h3>Thêm nhanh</h3>${items.map(([v, l, i]) => `<button class="menu-item" data-q="${v}"><span class="mi">${ic(i)}</span>${l}</button>`).join('')}`, (sh) => {
       sh.addEventListener('click', (e) => {
         const b = e.target.closest('[data-q]'); if (!b) return;
-        ({ task: () => taskSheet(), money: () => moneySheet(), habit: () => habitSheet(), event: () => eventSheet(), journal: () => reviewSheet(), letter: () => letterSheet(), fridge: () => fridgeSheet() })[b.dataset.q]();
+        ({ task: () => taskSheet(), money: () => moneySheet(), habit: () => habitSheet(), event: () => eventSheet(), journal: () => reviewSheet(), thank: () => thankSheet(), letter: () => letterSheet(), fridge: () => fridgeSheet() })[b.dataset.q]();
       });
     });
   }
@@ -3575,6 +3707,8 @@
       case 'install': installSheet(); break;
       case 'export': exportData(); break;
       case 'storage': storageSheet(); break;
+      case 'thank-new': thankSheet(null, !!b.dataset.later); break;
+      case 'thank-edit': thankSheet(b.dataset.id); break;
       case 'import': importData(); break;
       case 'reset':
         if (confirm('Xóa toàn bộ công việc, dữ liệu tập trung và đọc sách? Không thể hoàn tác.')) {
@@ -3586,6 +3720,16 @@
   });
 
   $('#view').addEventListener('submit', (e) => {
+    if (e.target.id === 'grat-f') {
+      e.preventDefault();
+      const f = e.target, k = keyOf(), before = gratOn(k).length;
+      setGrat(k, [f.g0.value, f.g1.value, f.g2.value]); save();
+      const n = gratOn(k).length;
+      render();
+      if (n >= 3 && before < 3) { const st = gratStreak(); celebrate(st > 1 ? `Đủ 3 điều biết ơn · chuỗi ${st} ngày 💚` : 'Đủ 3 điều biết ơn hôm nay 💚'); }
+      else toast(n ? `Đã lưu ${n}/3 điều biết ơn` : 'Đã xoá ghi chép hôm nay');
+      return;
+    }
     if (e.target.id !== 'shop-add') return;
     e.preventDefault();
     const v = e.target.item.value.trim(); if (!v) return;
