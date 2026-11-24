@@ -20,7 +20,8 @@
 - **Chiến tích hôm nay** (kiểu Locket): chụp hoặc chọn ảnh khoảnh khắc đáng tự hào, thêm chú thích; khung ảnh lớn trên trang chủ (vuốt ngang để xem các ảnh trong ngày, chú thích nền kính trong), lịch ảnh theo tháng, chuỗi ngày, xem toàn màn hình, chia sẻ. Ảnh lưu trong IndexedDB của thiết bị.
 - **Thư gửi bản thân tương lai**: viết thư, chọn mở sau 1/3/6/12 tháng hoặc ngày tùy chọn; thư được niêm phong đến đúng ngày, khi đến hạn app báo trên trang chủ và màn chào.
 - **Tab Tiện ích** gom các công cụ dưới đây cùng Thống kê, Nhật ký và Cá nhân. Nút **+** thêm theo ngữ cảnh trang đang mở; **giữ nút +** để mở menu thêm nhanh.
-- **Thói quen**: chọn biểu tượng, màu, các ngày trong tuần, số lần mỗi ngày; chạm để đánh dấu trên trang chủ; chuỗi ngày liên tục, tỉ lệ 30 ngày, lịch 7 ngày.
+- **Thói quen**: chọn biểu tượng, màu, các ngày trong tuần, số lần mỗi ngày; **Uống đủ nước** và **Đọc sách mỗi ngày** là 2 thói quen có sẵn, tự tính theo số ly nước và phút đọc, chỉnh mục tiêu ngay trong thói quen (nút +1 ly, nút Đọc mở bài hôm nay). Trang Thói quen: vòng tiến độ hôm nay, chuỗi dài nhất, độ đều đặn 30 ngày, tuần này theo ngày, thẻ từng thói quen có thanh tiến độ và 7 ngày gần nhất; chạm thẻ để xem chuỗi hiện tại, kỷ lục và lịch 5 tuần.
+- **Mục tiêu hôm nay** trên trang chủ: số việc còn lại, số đã xong và số việc quá hạn.
 - **Lịch âm**: ngày âm trên từng ô lịch, can chi ngày/tháng/năm, lịch tháng, mùng 1 và rằm tới, ngày lễ dương lịch và âm lịch sắp tới (tính theo giờ Việt Nam, thuật toán thiên văn của Hồ Ngọc Đức).
 - **Ngày quan trọng**: sinh nhật, kỷ niệm, ngày giỗ, hạn chót; theo dương lịch hoặc âm lịch, lặp hằng năm, đếm ngược, tự tính số tuổi; hiện trên trang chủ khi còn ≤ 7 ngày.
 - **Thu chi**: ghi khoản chi/thu với nút số tiền nhanh, 10 nhóm chi tiêu, ngân sách tháng có cảnh báo, tổng hợp theo nhóm và theo ngày.

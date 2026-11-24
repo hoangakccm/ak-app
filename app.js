@@ -103,9 +103,9 @@
     return { h: Math.floor(m / 60), m: m % 60 };
   }
 
-  const APP_VERSION = '1.24';
+  const APP_VERSION = '1.25';
   const APP_DATE = '24/11/2026';
-  const APP_NOTE = 'Thêm tiện ích Biết ơn: 3 điều biết ơn mỗi tối, soạn lời cảm ơn, danh sách lời cảm ơn chưa kịp nói';
+  const APP_NOTE = 'Uống nước, đọc sách thành thói quen; thiết kế lại trang Thói quen; thẻ mục tiêu hiện số việc còn lại';
   let swReg = null;
 
   // ---------- State ----------
@@ -178,6 +178,19 @@
     S.fridgeLog = Array.isArray(S.fridgeLog) ? S.fridgeLog : [];
     S.customFeels = Array.isArray(S.customFeels) ? S.customFeels : [];
     S.thanks = Array.isArray(S.thanks) ? S.thanks : [];
+    // Mục tiêu uống nước và đọc sách trở thành thói quen (số liệu lấy từ ly nước và phút đọc)
+    S.hiddenBuiltin = Array.isArray(S.hiddenBuiltin) ? S.hiddenBuiltin : [];
+    const today0 = keyOf(), first = (o) => Object.keys(o || {}).sort()[0] || today0;
+    const BUILTIN = [
+      ['read', 'Đọc sách mỗi ngày', '📚', '#0f8a6a', /đọc/i, first(S.readLog)],
+      ['water', 'Uống đủ nước', '💧', '#3a86b8', /(uống|nước)/i, first(S.water)],
+    ];
+    BUILTIN.forEach(([kind, name, icon, color, re, created]) => {
+      if (S.habits.some((h) => h.kind === kind) || S.hiddenBuiltin.includes(kind)) return;
+      const same = S.habits.find((h) => !h.kind && re.test(h.name) && (kind !== 'water' || /nước/i.test(h.name)));
+      if (same) { same.kind = kind; same.created = created < same.created ? created : same.created; return; }
+      S.habits.unshift({ id: `h-${kind}`, kind, name, icon, color, days: [0, 1, 2, 3, 4, 5, 6], target: 1, created });
+    });
     // Màn chào 3 lần/ngày: sáng, trưa, tối — giờ chỉnh được
     const WC = { m: '06:00', n: '13:00', e: '18:30' };
     S.welcomeCfg = S.welcomeCfg && typeof S.welcomeCfg === 'object' ? S.welcomeCfg : {};
@@ -693,9 +706,19 @@
 
   // ----- Thói quen -----
   const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
-  const hCount = (h, k) => (S.habitLog[h.id] || {})[k] || 0;
+  const hCount = (h, k) => (h.kind === 'water' ? waterOn(k) : h.kind === 'read' ? Math.floor(readOn(k) / 60) : (S.habitLog[h.id] || {})[k] || 0);
+  const hTarget = (h) => (h.kind === 'water' ? S.waterGoal : h.kind === 'read' ? S.readGoal : h.target || 1);
+  const hUnit = (h) => (h.kind === 'water' ? 'ly' : h.kind === 'read' ? 'phút' : 'lần');
   const hDue = (h, k) => k >= h.created && (h.days || ALL_DAYS).includes(dateOf(k).getDay());
-  const hDone = (h, k) => hCount(h, k) >= (h.target || 1);
+  const hDone = (h, k) => hCount(h, k) >= hTarget(h);
+  function hBest(h) {
+    let best = 0, cur = 0;
+    for (let k = h.created, g = 0; k <= keyOf() && g < 3650; k = addDays(k, 1), g++) {
+      if (!hDue(h, k)) continue;
+      if (hDone(h, k)) { cur++; best = Math.max(best, cur); } else if (k !== keyOf()) cur = 0;
+    }
+    return best;
+  }
   function hStreak(h) {
     let k = keyOf(), n = 0, guard = 0;
     if (hDue(h, k) && !hDone(h, k)) k = addDays(k, -1);
@@ -716,8 +739,15 @@
     return due ? Math.round((done / due) * 100) : 0;
   }
   function hTap(h, k = keyOf()) {
+    if (h.kind === 'water') {
+      const prev = waterOn(k); S.water[k] = prev + 1; save(); render();
+      if (S.water[k] === S.waterGoal) { const due = S.habits.filter((x) => hDue(x, k)); celebrate(due.every((x) => hDone(x, k)) ? 'Hoàn thành mọi thói quen hôm nay! 🔥' : `Tuyệt! Bạn đã uống đủ ${S.waterGoal} ly nước hôm nay 💧`); }
+      else toast(`Đã thêm 1 ly · ${S.water[k]}/${S.waterGoal} ly nước`, { fn: () => { S.water[k] = prev; save(); render(); } });
+      return;
+    }
+    if (h.kind === 'read') { const L = featuredLesson(); if (L) openReader(L.id); else go('read'); return; }
     const log = (S.habitLog[h.id] = S.habitLog[h.id] || {});
-    const prev = log[k] || 0, t = h.target || 1;
+    const prev = log[k] || 0, t = hTarget(h);
     if (prev >= t) {
       delete log[k]; save(); render();
       toast(`Đã bỏ đánh dấu “${h.name}”`, { fn: () => { log[k] = prev; save(); render(); } });
@@ -731,13 +761,13 @@
     }
   }
   const habitRing = (h, k, size = 56) =>
-    `<span class="h-ring" style="--hc:${h.color}">${ring(Math.min(hCount(h, k) / (h.target || 1), 1), size, 4)}<em>${h.icon}</em>${hDone(h, k) ? `<i class="h-ok">${ic('check', 'stroke-width="3.4"')}</i>` : ''}</span>`;
+    `<span class="h-ring" style="--hc:${h.color}">${ring(Math.min(hCount(h, k) / hTarget(h), 1), size, 4)}<em>${h.icon}</em>${hDone(h, k) ? `<i class="h-ok">${ic('check', 'stroke-width="3.4"')}</i>` : ''}</span>`;
   function habitStripHTML() {
     const k = keyOf(), due = S.habits.filter((h) => hDue(h, k));
     if (!due.length) return '';
     const n = due.filter((h) => hDone(h, k)).length;
     return `<div class="section-head"><h3>Thói quen hôm nay</h3><button class="link" data-act="go" data-to="habits">${n}/${due.length} ${ic('chevR')}</button></div>
-      <div class="h-strip">${due.map((h) => `<button class="h-chip ${hDone(h, k) ? 'done' : ''}" data-act="habit-tap" data-hid="${h.id}" aria-label="${esc(h.name)}">${habitRing(h, k)}<span>${esc(h.name)}</span>${(h.target || 1) > 1 ? `<small>${hCount(h, k)}/${h.target}</small>` : ''}</button>`).join('')}</div>`;
+      <div class="h-strip">${due.map((h) => `<button class="h-chip ${hDone(h, k) ? 'done' : ''}" data-act="habit-tap" data-hid="${h.id}" aria-label="${esc(h.name)}">${habitRing(h, k)}<span>${esc(h.name)}</span>${hTarget(h) > 1 ? `<small>${hCount(h, k)}/${hTarget(h)}${h.kind === 'read' ? '′' : ''}</small>` : ''}</button>`).join('')}</div>`;
   }
 
   // ----- Thu chi -----
@@ -1285,7 +1315,7 @@
             cur ? row('duty', `Đang trực · ${esc(cur.label)}`, `Đến ${cur.s.end}`) : nx ? row('duty', `Ca tới · ${esc(nx.label)}`, `Bắt đầu ${nx.s.start}`) : '',
             row('list', left.length ? `${left.length} việc cho buổi chiều` : 'Buổi chiều đang trống', left.length ? left.slice(0, 3).map(tName).join(' · ') : 'Chạm để thêm việc', left.length ? 'today' : 'task'),
             `<button data-wl="water" class="wl-row"><span class="wl-ri">${ic('drop')}</span><span><b data-w>${w}/${S.waterGoal} ly nước</b><small data-ws>${w >= S.waterGoal ? 'Đủ nước rồi, giỏi lắm! 💧' : 'Chạm để thêm 1 ly'}</small></span><span class="wl-plus">${ic('plus', 'stroke-width="2.6"')}</span></button>`,
-            hdue.length && hok < hdue.length ? row('sprout', `${hdue.length - hok} thói quen chưa xong`, hdue.filter((h) => !hDone(h, k)).slice(0, 3).map((h) => `${h.icon} ${esc(h.name)}`).join(' · '), 'habits') : '',
+            hdue.filter((h) => !h.kind && !hDone(h, k)).length ? row('sprout', `${hdue.filter((h) => !h.kind && !hDone(h, k)).length} thói quen chưa xong`, hdue.filter((h) => !h.kind && !hDone(h, k)).slice(0, 3).map((h) => `${h.icon} ${esc(h.name)}`).join(' · '), 'habits') : '',
             rd < S.readGoal ? row('book', `Còn ${S.readGoal - rd} phút đọc sách`, featuredLesson() ? esc(featuredLesson().title) : '', 'read') : '',
             fridgeRow,
           ].join('')}</div>
@@ -1631,7 +1661,7 @@
     if (total) {
       if (pct === 100) { title = 'Tuyệt vời! 🎉'; sub = 'Bạn đã hoàn thành mọi việc hôm nay.'; }
       else if (pct >= 50) { title = 'Cố lên nào!'; sub = `Bạn đã đi được ${pct}% chặng đường hôm nay.`; }
-      else if (pct > 0) { title = 'Khởi đầu tốt!'; sub = `Còn ${total - done} việc nữa là xong mục tiêu.`; }
+      else if (pct > 0) { title = 'Khởi đầu tốt!'; sub = 'Giữ nhịp, từng việc một.'; }
       else { title = 'Sẵn sàng chưa?'; sub = `Hôm nay có ${total} việc đang chờ bạn.`; }
     }
 
@@ -1674,6 +1704,7 @@
         <div class="goal-tag"><span class="ring">${ic('target', 'stroke-width="2.4"')}</span>Mục tiêu hôm nay</div>
         <h2>${title}</h2>
         <p>${sub}</p>
+        ${total ? `<div class="goal-left"><span class="${undone ? '' : 'ok'}">${ic(undone ? 'list' : 'check', 'stroke-width="2.6"')}${undone ? `Còn <b>${undone}</b> việc` : 'Không còn việc nào'}</span><span>${ic('check', 'stroke-width="2.6"')}Đã xong <b>${done}/${total}</b></span>${od.length ? `<span class="od">${ic('alert', 'stroke-width="2.4"')}<b>${od.length}</b> quá hạn</span>` : ''}</div>` : ''}
         <span class="goal-arrow">${ic('chevR', 'stroke-width="2.6"')}</span>
         <div class="goal-progress">
           <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><i data-w="${pct}"></i></div>
@@ -2177,24 +2208,52 @@
 
   function viewHabits() {
     const k = keyOf(), due = S.habits.filter((h) => hDue(h, k)), n = due.filter((h) => hDone(h, k)).length;
+    const rest = S.habits.filter((h) => !hDue(h, k));
     const last7 = Array.from({ length: 7 }, (_, i) => addDays(k, i - 6));
-    const sugg = HABIT_SUGGEST.filter(([nm]) => !S.habits.some((h) => h.name === nm));
+    const week = Array.from({ length: 7 }, (_, i) => addDays(mondayOf(k), i));
+    const dayPct = (d) => { const du = S.habits.filter((h) => hDue(h, d)); return du.length ? du.filter((h) => hDone(h, d)).length / du.length : null; };
+    const best = S.habits.reduce((a, h) => Math.max(a, hStreak(h)), 0);
+    const rate = S.habits.length ? Math.round(S.habits.reduce((a, h) => a + hRate(h), 0) / S.habits.length) : 0;
+    const pct = due.length ? n / due.length : 0;
+    const msg = !due.length ? 'Hôm nay là ngày nghỉ' : n === due.length ? 'Hoàn thành tất cả! 🎉' : n ? `Còn ${due.length - n} thói quen nữa` : 'Bắt đầu từ việc nhỏ nhất';
+    const sugg = [
+      ...[['water', 'Uống đủ nước', '💧'], ['read', 'Đọc sách mỗi ngày', '📚']].filter(([kd]) => !S.habits.some((h) => h.kind === kd)).map(([kd, nm, e]) => [nm, e, kd]),
+      ...HABIT_SUGGEST.filter(([nm]) => !S.habits.some((h) => h.name === nm)),
+    ];
+    const card = (h) => {
+      const c = hCount(h, k), t = hTarget(h), done = hDone(h, k), st = hStreak(h), dueT = hDue(h, k);
+      const prog = h.kind || t > 1 ? `${c}/${t} ${hUnit(h)}` : done ? 'Đã xong hôm nay' : dueT ? 'Chưa làm hôm nay' : 'Hôm nay nghỉ';
+      const act = !dueT ? '<span class="h-off">Nghỉ</span>'
+        : h.kind === 'water' ? `<button class="hb-act" data-act="habit-tap" data-hid="${h.id}" aria-label="Thêm 1 ly nước">${ic('plus', 'stroke-width="2.8"')}<small>1 ly</small></button>`
+        : h.kind === 'read' ? `<button class="hb-act ${done ? 'on' : ''}" data-act="habit-tap" data-hid="${h.id}" aria-label="Đọc sách">${ic(done ? 'check' : 'book', 'stroke-width="2.6"')}<small>${done ? 'Đạt' : 'Đọc'}</small></button>`
+        : `<button class="hb-act ${done ? 'on' : ''}" data-act="habit-tap" data-hid="${h.id}" aria-label="Đánh dấu ${esc(h.name)}">${ic(done ? 'check' : t > 1 ? 'plus' : 'check', 'stroke-width="2.8"')}${t > 1 && !done ? '<small>1 lần</small>' : ''}</button>`;
+      return `<div class="hb-card glass ${done ? 'done' : ''} ${dueT ? '' : 'rest'}" style="--hc:${h.color}">
+        <button class="hb-main" data-act="habit-edit" data-hid="${h.id}">
+          ${habitRing(h, k, 54)}
+          <span class="hb-info"><b>${esc(h.name)}</b>
+            <span class="hb-sub">${prog}${st ? ` · <em>🔥 ${st} ngày</em>` : ''}${h.kind ? ' · <i>mục tiêu</i>' : ''}</span>
+            <span class="hb-bar"><u style="width:${Math.min(100, Math.round(c / t * 100))}%"></u></span>
+          </span>
+        </button>
+        ${act}
+        <div class="hb-dots">${last7.map((d) => `<span class="${!hDue(h, d) ? 'na' : hDone(h, d) ? 'on' : d === k ? 'today' : hCount(h, d) ? 'part' : ''}" title="${fmtDM(d)}"><i></i>${WD[dateOf(d).getDay()]}</span>`).join('')}</div>
+      </div>`;
+    };
+    const order = (a, b) => hDone(a, k) - hDone(b, k);
     return `${subHead('Thói quen', 'Mỗi ngày một chút, kiên trì sẽ thành.')}
-      ${S.habits.length ? `<div class="h-sum glass"><span class="h-sum-r">${ring(due.length ? n / due.length : 0, 64, 7)}<b>${due.length ? Math.round((n / due.length) * 100) : 0}%</b></span><div><b>${n}/${due.length} thói quen</b><span>đã hoàn thành hôm nay</span></div></div>` : ''}
-      <div class="h-list">${S.habits.map((h) => {
-        const st = hStreak(h), dueToday = hDue(h, k), done = hDone(h, k);
-        return `<div class="h-card glass" style="--hc:${h.color}">
-          <button class="h-main" data-act="habit-edit" data-hid="${h.id}">
-            <span class="h-badge">${h.icon}</span>
-            <span class="h-info"><b>${esc(h.name)}</b><span>${st ? `🔥 ${st} ngày liên tục` : 'Bắt đầu chuỗi mới'} · ${hRate(h)}% (30 ngày)</span></span>
-          </button>
-          ${dueToday ? `<button class="h-check ${done ? 'on' : ''}" data-act="habit-tap" data-hid="${h.id}" aria-label="Đánh dấu ${esc(h.name)}">${(h.target || 1) > 1 && !done ? `${hCount(h, k)}/${h.target}` : ic('check', 'stroke-width="3"')}</button>` : '<span class="h-off">Nghỉ</span>'}
-          <div class="h-week">${last7.map((d) => `<span class="${!hDue(h, d) ? 'na' : hDone(h, d) ? 'on' : d === k ? 'today' : ''}"><i></i>${WD[dateOf(d).getDay()]}</span>`).join('')}</div>
-        </div>`;
-      }).join('')}</div>
+      ${S.habits.length ? `<div class="hb-hero glass">
+        <div class="hb-top">
+          <span class="hb-ring">${ring(pct, 92, 9)}<span><b>${n}/${due.length}</b><small>hôm nay</small></span></span>
+          <div class="hb-meta"><h3>${msg}</h3>
+            <div class="hb-kpi"><span><b>🔥 ${best}</b><small>chuỗi dài nhất</small></span><span><b>${rate}%</b><small>đều đặn 30 ngày</small></span></div></div>
+        </div>
+        <div class="hb-week">${week.map((d) => { const p = dayPct(d); return `<span class="${d === k ? 'today' : ''} ${d > k ? 'future' : ''}"><small>${WD[dateOf(d).getDay()]}</small><span class="hb-dr">${d <= k && p !== null ? ring(p, 34, 4) : ''}<b>${dateOf(d).getDate()}</b></span></span>`; }).join('')}</div>
+      </div>` : ''}
+      ${due.length ? `<div class="section-head"><h3>Hôm nay</h3><span class="hb-count">${n}/${due.length} xong</span></div><div class="hb-list">${due.slice().sort(order).map(card).join('')}</div>` : ''}
+      ${rest.length ? `<div class="section-head"><h3>Nghỉ hôm nay</h3></div><div class="hb-list">${rest.map(card).join('')}</div>` : ''}
       ${!S.habits.length ? '<div class="empty glass"><div class="big">🌱</div>Chưa có thói quen nào.<br>Chọn nhanh một gợi ý bên dưới hoặc tự tạo.</div>' : ''}
       ${sugg.length ? `<div class="section-head"><h3>Gợi ý</h3></div>
-      <div class="chips sm">${sugg.map(([nm, e]) => `<button class="chip" data-act="habit-quick" data-name="${esc(nm)}" data-icon="${e}">${e} ${esc(nm)}</button>`).join('')}</div>` : ''}
+      <div class="chips sm">${sugg.map(([nm, e, kd]) => `<button class="chip" data-act="habit-quick" data-name="${esc(nm)}" data-icon="${e}"${kd ? ` data-kind="${kd}"` : ''}>${e} ${esc(nm)}</button>`).join('')}</div>` : ''}
       <button class="btn btn-primary btn-block" data-act="habit-new" style="margin-top:18px">${ic('plus')} Tạo thói quen</button>`;
   }
 
@@ -2388,10 +2447,9 @@
         <button class="menu-item" data-act="theme"><span class="mi">${ic('moon')}</span><span class="grow">Giao diện</span><span class="hint">${themeLbl}</span></button>
         <button class="menu-item" data-act="preset"><span class="mi">${ic('clock')}</span><span class="grow">Thời lượng tập trung</span><span class="hint">${S.focusPreset} phút</span></button>
         <button class="menu-item" data-act="auto-roll" role="switch" aria-checked="${!!S.autoRoll}"><span class="mi">${ic('repeat')}</span><span class="grow">Tự chuyển việc chưa xong sang hôm sau</span><span class="switch ${S.autoRoll ? 'on' : ''}"><i></i></span></button>
-        <button class="menu-item" data-act="water-goal"><span class="mi">${ic('drop')}</span><span class="grow">Mục tiêu uống nước</span><span class="hint">${S.waterGoal} ly</span></button>
+        <button class="menu-item" data-act="go" data-to="habits"><span class="mi">${ic('sprout')}</span><span class="grow">Thói quen & mục tiêu</span><span class="hint">${S.waterGoal} ly · ${S.readGoal} phút</span></button>
         <button class="menu-item" data-act="welcome-cfg"><span class="mi">${ic('sun')}</span><span class="grow">Màn chào trong ngày</span><span class="hint">${Object.keys(WL_SLOTS).filter((x) => S.welcomeCfg[x].on).map((x) => S.welcomeCfg[x].t).join(' · ') || 'Tắt'}</span></button>
         <button class="menu-item" data-act="go-journal"><span class="mi">${ic('journal')}</span><span class="grow">Nhật ký tâm trạng</span><span class="chev">${ic('chevR')}</span></button>
-        <button class="menu-item" data-act="read-goal"><span class="mi">${ic('book')}</span><span class="grow">Mục tiêu đọc mỗi ngày</span><span class="hint">${S.readGoal} phút</span></button>
       </div>
       <div class="list glass">
         <button class="menu-item" data-act="install"><span class="mi">${ic('phone')}</span><span class="grow">Cài lên màn hình chính</span><span class="chev">${ic('chevR')}</span></button>
@@ -2805,14 +2863,19 @@
   }
 
   function habitSheet(h) {
-    const d = h ? { ...h, days: (h.days || ALL_DAYS).slice() } : { name: '', icon: '🏃', color: HABIT_COLORS[S.habits.length % HABIT_COLORS.length], days: ALL_DAYS.slice(), target: 1 };
+    const d = h ? { ...h, days: (h.days || ALL_DAYS).slice(), target: hTarget(h) } : { name: '', icon: '🏃', color: HABIT_COLORS[S.habits.length % HABIT_COLORS.length], days: ALL_DAYS.slice(), target: 1 };
+    const kd = h && h.kind, stepV = kd === 'read' ? 5 : 1, minV = kd === 'read' ? 5 : 1, maxV = kd === 'read' ? 120 : kd === 'water' ? 20 : 20;
+    const hist = h ? Array.from({ length: 35 }, (_, i) => addDays(mondayOf(keyOf()), i - 28)) : [];
     openSheet(`<h3>${h ? 'Sửa thói quen' : 'Thói quen mới'}</h3>
+      ${h ? `<div class="hs-stats"><span><b>🔥 ${hStreak(h)}</b><small>chuỗi hiện tại</small></span><span><b>🏆 ${hBest(h)}</b><small>kỷ lục</small></span><span><b>${hRate(h)}%</b><small>30 ngày</small></span></div>
+      <div class="hs-heat" style="--hc:${h.color}">${['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'].map((x) => `<b>${x}</b>`).join('')}${hist.map((x) => { const f = x > keyOf() || !hDue(h, x) ? -1 : Math.min(1, hCount(h, x) / hTarget(h)); return `<i class="${x > keyOf() ? 'fut' : f < 0 ? 'na' : ''} ${x === keyOf() ? 'now' : ''}" style="--f:${Math.max(f, 0)}" title="${fmtDM(x)}"></i>`; }).join('')}</div>` : ''}
+      ${kd ? `<p class="hs-note">${kd === 'water' ? 'Số ly lấy từ thẻ Uống nước ở trang chủ. Chạm nút + trên thói quen để thêm 1 ly.' : 'Số phút lấy từ thời gian đọc trong mục Đọc sách. Chạm nút Đọc để mở bài hôm nay.'}</p>` : ''}
       <form id="hf" autocomplete="off">
         <label class="field"><span>Tên thói quen</span><input class="input" name="hname" maxlength="60" required value="${esc(d.name)}" placeholder="Ví dụ: Chạy bộ buổi sáng"></label>
         <div class="field"><span>Biểu tượng</span><div class="icon-grid" id="hi">${HABIT_ICONS.map((e) => `<button type="button" data-v="${e}" class="${e === d.icon ? 'on' : ''}">${e}</button>`).join('')}</div></div>
         <div class="field"><span>Màu</span><div class="color-row" id="hc">${HABIT_COLORS.map((c) => `<button type="button" data-v="${c}" style="--c:${c}" class="${c === d.color ? 'on' : ''}" aria-label="Chọn màu"></button>`).join('')}</div></div>
         <div class="field"><span>Các ngày trong tuần</span><div class="chips sm wd" id="hd">${[1, 2, 3, 4, 5, 6, 0].map((x) => `<button type="button" class="chip ${d.days.includes(x) ? 'on' : ''}" data-v="${x}">${WD[x]}</button>`).join('')}</div></div>
-        <div class="field"><span>Số lần mỗi ngày</span><div class="stepper"><button type="button" data-s="-1" aria-label="Giảm">${ic('minus')}</button><b id="ht">${d.target}</b><button type="button" data-s="1" aria-label="Tăng">${ic('plus')}</button></div></div>
+        <div class="field"><span>${kd === 'water' ? 'Mục tiêu mỗi ngày (ly nước, ~0,25 lít/ly)' : kd === 'read' ? 'Mục tiêu đọc mỗi ngày (phút)' : 'Số lần mỗi ngày'}</span><div class="stepper"><button type="button" data-s="-1" aria-label="Giảm">${ic('minus')}</button><b id="ht">${d.target}</b><button type="button" data-s="1" aria-label="Tăng">${ic('plus')}</button></div></div>
         <button class="btn btn-primary btn-block" type="submit">${h ? 'Lưu thay đổi' : 'Tạo thói quen'}</button>
         ${h ? `<button type="button" class="btn btn-danger btn-block" id="hdel" style="margin-top:10px">${ic('trash')} Xóa thói quen</button>` : ''}
       </form>`, (sh) => {
@@ -2828,17 +2891,21 @@
       });
       $('.stepper', sh).addEventListener('click', (e) => {
         const b = e.target.closest('[data-s]'); if (!b) return;
-        d.target = Math.min(20, Math.max(1, d.target + +b.dataset.s)); $('#ht', sh).textContent = d.target;
+        d.target = Math.min(maxV, Math.max(minV, d.target + +b.dataset.s * stepV)); $('#ht', sh).textContent = d.target;
       });
       if (h) $('#hdel', sh).addEventListener('click', () => {
-        const idx = S.habits.indexOf(h); S.habits.splice(idx, 1); save(); closeSheet(); render();
-        toast('Đã xóa thói quen', { fn: () => { S.habits.splice(idx, 0, h); save(); render(); } });
+        const idx = S.habits.indexOf(h); S.habits.splice(idx, 1);
+        if (h.kind) S.hiddenBuiltin = [...new Set([...S.hiddenBuiltin, h.kind])];
+        save(); closeSheet(); render();
+        toast(h.kind ? 'Đã ẩn thói quen (dữ liệu vẫn được giữ)' : 'Đã xóa thói quen', { fn: () => { S.habits.splice(idx, 0, h); if (h.kind) S.hiddenBuiltin = S.hiddenBuiltin.filter((x) => x !== h.kind); save(); render(); } });
       });
       f.addEventListener('submit', (e) => {
         e.preventDefault();
         const name = f.hname.value.trim(); if (!name) return;
         if (!d.days.length) { toast('Chọn ít nhất một ngày trong tuần'); return; }
-        const data = { name, icon: d.icon, color: d.color, days: d.days, target: d.target };
+        const data = { name, icon: d.icon, color: d.color, days: d.days, target: kd ? 1 : d.target };
+        if (kd === 'water') S.waterGoal = d.target;
+        if (kd === 'read') S.readGoal = d.target;
         if (h) Object.assign(h, data); else S.habits.push({ id: uid(), ...data, created: keyOf() });
         save(); closeSheet(); render(); toast(h ? 'Đã lưu thói quen' : 'Đã tạo thói quen mới 🌱');
       });
@@ -3581,7 +3648,12 @@
       case 'habit-new': habitSheet(); break;
       case 'habit-edit': habitSheet(S.habits.find((x) => x.id === b.dataset.hid)); break;
       case 'habit-quick':
-        S.habits.push({ id: uid(), name: b.dataset.name, icon: b.dataset.icon, color: HABIT_COLORS[S.habits.length % HABIT_COLORS.length], days: ALL_DAYS.slice(), target: 1, created: today });
+        if (b.dataset.kind) {
+          const kd = b.dataset.kind;
+          S.hiddenBuiltin = S.hiddenBuiltin.filter((x) => x !== kd);
+          const first = Object.keys(kd === 'water' ? S.water : S.readLog).sort()[0] || today;
+          S.habits.unshift({ id: `h-${kd}`, kind: kd, name: b.dataset.name, icon: b.dataset.icon, color: kd === 'water' ? '#3a86b8' : '#0f8a6a', days: ALL_DAYS.slice(), target: 1, created: first });
+        } else S.habits.push({ id: uid(), name: b.dataset.name, icon: b.dataset.icon, color: HABIT_COLORS[S.habits.length % HABIT_COLORS.length], days: ALL_DAYS.slice(), target: 1, created: today });
         save(); render(); toast('Đã thêm thói quen 🌱');
         break;
       case 'event-new': eventSheet(); break;
